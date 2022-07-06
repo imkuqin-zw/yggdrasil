@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package example.proto.helloword;
+
+option go_package = "github.com/imkuqin-zw/yggdrasil/example/protogen/helloword;helloword";
+
+
+import "yggdrasil/error/reason.proto";
+
+enum Reason {
+  option (yggdrasil.error.default_reason) = 500;
+  // Do not use this default value.
+  ERROR_REASON_UNSPECIFIED = 0;
+}

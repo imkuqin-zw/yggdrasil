@@ -1,0 +1,27 @@
+yggdrasil:
+  application:
+    namespace: default
+    version: v1
+    region: "ap-guangzhou"
+    zone: "ap-guangzhou3"
+    campus: ""
+  register: polaris
+  client:
+    example.polaris.server:
+      grpc:
+        target: polaris://example.polaris.server
+        balancer: "polaris"
+
+  server:
+    governor:
+      port: 30007
+
+polaris:
+  global:
+    serverConnector:
+      addresses:
+        - 127.0.0.1:8091
+    statReporter:
+      enable: true
+      chain:
+        - prometheus

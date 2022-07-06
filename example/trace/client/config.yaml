@@ -1,0 +1,13 @@
+yggdrasil:
+  application:
+    namespace: "dev"
+  client:
+    sample:
+      grpc:
+        target: 127.0.0.1:30001
+  tracer: jaeger
+
+jaeger:
+  endpoint: "http://localhost:14268/api/traces"
+  sampler: 1
+

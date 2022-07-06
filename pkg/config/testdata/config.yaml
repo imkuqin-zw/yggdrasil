@@ -1,0 +1,5 @@
+yggdrasil:
+  client:
+    example.polaris.server:
+      grpc:
+        target: 127.0.0.1:30001

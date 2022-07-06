@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package yggdrasil.error;
+
+option go_package = "github.com/imkuqin-zw/yggdrasil/proto/yggdrasil/error;error";
+option java_multiple_files = true;
+option java_outer_classname = "ReasonProto";
+option java_package = "com.github.imkuqin_zw.yggdrasil.error";
+option objc_class_prefix = "API";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.EnumOptions {
+  int32 default_reason = 1108;
+}
+
+enum Reason {
+  USER_NOT_FOUND = 0;
+  CONTENT_MISSING = 1;
+}

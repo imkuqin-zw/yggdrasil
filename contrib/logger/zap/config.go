@@ -45,10 +45,9 @@ type BufferConfig struct {
 
 // Config
 type Config struct {
-	Level      string
-	AddCaller  bool
-	CallerSkip int
-	File       struct {
+	Level     string
+	AddCaller bool
+	File      struct {
 		Enable bool
 		FileConfig
 		Encoder *zapcore.EncoderConfig
@@ -116,5 +115,5 @@ func (config *Config) Build() *Logger {
 			}
 		}
 	}
-	return NewLogger(config)
+	return newLogger(config)
 }

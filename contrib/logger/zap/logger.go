@@ -3,10 +3,16 @@ package zap
 import (
 	"os"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/config"
+	"github.com/imkuqin-zw/yggdrasil/pkg/log"
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+func init() {
+	log.RegisterConstructor("zap", NewDefaultLogger)
+}
 
 type Logger struct {
 	lg *zap.Logger
@@ -67,11 +73,11 @@ func (lg *Logger) ZapLogger() *zap.Logger {
 	return lg.lg
 }
 
-func NewLogger(config *Config) *Logger {
+func newLogger(config *Config) *Logger {
 	zapOptions := make([]zap.Option, 0)
 	zapOptions = append(zapOptions, zap.AddStacktrace(zap.PanicLevel))
 	if config.AddCaller {
-		zapOptions = append(zapOptions, zap.AddCaller(), zap.AddCallerSkip(config.CallerSkip))
+		zapOptions = append(zapOptions, zap.AddCaller(), zap.AddCallerSkip(1))
 	}
 
 	lv := zap.NewAtomicLevelAt(zapcore.InfoLevel)
@@ -106,4 +112,17 @@ func NewLogger(config *Config) *Logger {
 		SugaredLogger: lg.Sugar(),
 		lv:            &lv,
 	}
+}
+
+func NewDefaultLogger() types.Logger {
+	cfg := &Config{}
+	if err := config.Get("zapLogger").Scan(cfg); err != nil {
+		log.Fatalf("fault to load zap logger config, err: %s", err)
+	}
+	cfg.Level = config.GetString("yggdrasil.logger.level", "debug")
+	return cfg.Build()
+}
+
+func watchConfig() {
+
 }

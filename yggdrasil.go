@@ -9,30 +9,44 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/server"
 	"github.com/imkuqin-zw/yggdrasil/pkg/trace"
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
+	"go.uber.org/atomic"
 )
 
 var app = application.New()
+var initialized atomic.Bool
 
 func Init(appName string, ops ...Option) error {
 	opts := &options{}
+	initLogger()
 	initInstanceInfo(appName)
 	initServer(opts)
 	initRegistry(opts)
 	applyOpt(opts, ops...)
 	initTracer()
 	app.Init(opts.getAppOpts()...)
+	initialized.Store(true)
 	return nil
+}
+
+func Start() error {
+	if !initialized.Load() {
+		return errors.New("please initialize the yggdrasil before starting")
+	}
+	return app.Run()
 }
 
 func Run(appName string, ops ...Option) error {
 	opts := &options{}
+	initLogger()
 	initInstanceInfo(appName)
 	initServer(opts)
 	initRegistry(opts)
 	applyOpt(opts, ops...)
 	initTracer()
 	app.Init(opts.getAppOpts()...)
+	initialized.Store(true)
 	return app.Run()
 }
 
@@ -75,6 +89,21 @@ func initInstanceInfo(appName string) {
 		log.Fatalf("fault to set application name, err: %s", err.Error())
 	}
 	pkg.InitInstanceInfo()
+}
+
+func initLogger() {
+	logName := config.GetString("yggdrasil.logger.name", "std")
+	if logName == "std" {
+		lv := config.GetBytes("yggdrasil.logger.level", []byte("debug"))
+		var level types.Level
+		if err := level.UnmarshalText(lv); err != nil {
+			log.Fatalf("fault to unmarshal std logger level, err: %s", err.Error())
+		}
+		log.SetLevel(level)
+	} else {
+		lg := log.GetLogger(logName)
+		log.SetLogger(lg)
+	}
 }
 
 func applyOpt(opts *options, ops ...Option) {

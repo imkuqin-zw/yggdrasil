@@ -121,7 +121,7 @@ func LoadConfig(appName string) error {
 	cfg := struct {
 		Filenames []string
 	}{}
-	if err := config2.Scan("yggdrasil.configSources.polaris", cfg); err != nil {
+	if err := config2.Scan("yggdrasil.configSources.polaris", &cfg); err != nil {
 		return err
 	}
 

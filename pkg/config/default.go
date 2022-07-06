@@ -43,6 +43,10 @@ func GetString(key string, def ...string) string {
 	return cfg.Get(key).String(def...)
 }
 
+func GetBytes(key string, def ...[]byte) []byte {
+	return cfg.Get(key).Bytes(def...)
+}
+
 func GetStringSlice(key string, def ...[]string) []string {
 	return cfg.Get(key).StringSlice(def...)
 }

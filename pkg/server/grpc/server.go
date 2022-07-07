@@ -8,7 +8,6 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/log"
-	"github.com/imkuqin-zw/yggdrasil/pkg/log/grpclog"
 	"github.com/imkuqin-zw/yggdrasil/pkg/server"
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xnet"
@@ -16,7 +15,6 @@ import (
 )
 
 func init() {
-	grpclog.Init()
 	server.RegisterConstructor(constructor)
 }
 

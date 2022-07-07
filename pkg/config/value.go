@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -147,11 +148,27 @@ func (m *value) Duration(def ...time.Duration) time.Duration {
 		}
 		return value
 	default:
+		if len(def) == 0 {
+			return 0
+		}
 		return def[0]
 	}
 }
 
 func (m *value) StringSlice(def ...[]string) []string {
+	fmt.Printf("%T\n", m.val)
+	switch sl := m.val.(type) {
+	case []string:
+		return sl
+	case []interface{}:
+		tmp := make([]string, len(sl))
+		for i, item := range sl {
+			tmp[i] = fmt.Sprintf("%v", item)
+		}
+		return tmp
+	default:
+
+	}
 	sl, ok := m.val.([]string)
 	if ok {
 		return sl

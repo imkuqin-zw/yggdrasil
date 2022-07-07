@@ -10,7 +10,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-var regx, _ = regexp.Compile("{([\\w.]+)}")
+var regx, _ = regexp.Compile(`{([\w.-]+)}`)
 
 type values struct {
 	keyDelimiter string

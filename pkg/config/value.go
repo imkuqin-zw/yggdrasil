@@ -156,7 +156,6 @@ func (m *value) Duration(def ...time.Duration) time.Duration {
 }
 
 func (m *value) StringSlice(def ...[]string) []string {
-	fmt.Printf("%T\n", m.val)
 	switch sl := m.val.(type) {
 	case []string:
 		return sl

@@ -74,7 +74,7 @@ func (p *polarisNamingBalancer) createSubConnection(addr resolver.Address) {
 		// a is a new address (not existing in b.subConns).
 		sc, err := p.cc.NewSubConn([]resolver.Address{addr}, balancer.NewSubConnOptions{HealthCheckEnabled: true})
 		if err != nil {
-			grpclog.Warningf("[Polaris]balancer: failed to create new SubConn: %v", err)
+			log.Warnf("[Polaris]balancer: failed to create new SubConn: %v", err)
 			return
 		}
 		p.subConns[addr] = sc
@@ -90,7 +90,7 @@ func (p *polarisNamingBalancer) createSubConnection(addr resolver.Address) {
 // returns a nil error.  Any other errors are currently ignored.
 func (p *polarisNamingBalancer) UpdateClientConnState(state balancer.ClientConnState) error {
 	if log.Enable(types.LvInfo) {
-		log.Infof("balancer: got new ClientConn state: %+v", state)
+		grpclog.Infof("balancer: got new ClientConn state: %+v", state)
 	}
 	if len(state.ResolverState.Addresses) == 0 {
 		p.ResolverError(errors.New("produced zero addresses"))
@@ -151,7 +151,7 @@ func (p *polarisNamingBalancer) ResolverError(err error) {
 func (p *polarisNamingBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	s := state.ConnectivityState
 	if log.Enable(types.LvInfo) {
-		log.Infof("base.baseBalancer: handle SubConn state change: %p, %v", sc, s)
+		grpclog.Infof("base.baseBalancer: handle SubConn state change: %p, %v", sc, s)
 	}
 	oldS, quit := func() (connectivity.State, bool) {
 		p.rwMutex.Lock()
@@ -159,7 +159,7 @@ func (p *polarisNamingBalancer) UpdateSubConnState(sc balancer.SubConn, state ba
 		oldS, ok := p.scStates[sc]
 		if !ok {
 			if log.Enable(types.LvInfo) {
-				log.Infof("base.baseBalancer: got state changes for an unknown SubConn: %p, %v", sc, s)
+				grpclog.Infof("base.baseBalancer: got state changes for an unknown SubConn: %p, %v", sc, s)
 			}
 			return connectivity.TransientFailure, true
 		}

@@ -7,14 +7,9 @@ import (
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/log"
-	"github.com/imkuqin-zw/yggdrasil/pkg/log/grpclog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
-
-func init() {
-	grpclog.Init()
-}
 
 func getConfig(name string) *Config {
 	c := &Config{}

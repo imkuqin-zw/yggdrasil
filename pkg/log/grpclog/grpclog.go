@@ -1,12 +1,18 @@
 package grpclog
 
 import (
+	"sync"
+
 	"github.com/imkuqin-zw/yggdrasil/pkg/log"
 	"google.golang.org/grpc/grpclog"
 )
 
-func Init() {
-	grpclog.SetLoggerV2(&loggerWrapper{})
+var once sync.Once
+
+func SetLogger() {
+	once.Do(func() {
+		grpclog.SetLoggerV2(&loggerWrapper{})
+	})
 }
 
 // loggerWrapper wraps x*log.Logger into a LoggerV2.

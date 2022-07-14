@@ -50,6 +50,14 @@ func Run(appName string, ops ...Option) error {
 	return app.Run()
 }
 
+func Stop() error {
+	if err := app.Stop(); err != nil {
+		log.Errorf("fault to stop yggdrasil application, err: %+v", err)
+		return err
+	}
+	return nil
+}
+
 func initServer(opts *options) {
 	servers := make([]types.Server, 0)
 	for _, f := range server.GetConstructors() {

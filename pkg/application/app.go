@@ -93,7 +93,11 @@ func (app *Application) Stop() error {
 		}()
 		err = app.stopServers()
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	log.Info("application stopped")
+	return nil
 }
 
 func (app *Application) Run() error {
@@ -232,7 +236,6 @@ func (app *Application) waitSignals() {
 				log.Errorf("fault to stop, err: %s", err.Error())
 				return
 			}
-			log.Info("application stopped")
 		}()
 	}()
 }

@@ -14,8 +14,8 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
-	"github.com/polarismesh/polaris-go/api"
-	"github.com/polarismesh/polaris-go/pkg/model"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/api"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/pkg/model"
 	"go.uber.org/multierr"
 )
 

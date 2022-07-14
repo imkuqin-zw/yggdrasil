@@ -3,8 +3,8 @@ package paloris
 import (
 	"sync"
 
-	"github.com/polarismesh/polaris-go/api"
-	"github.com/polarismesh/polaris-go/pkg/config"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/api"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/pkg/config"
 )
 
 var (

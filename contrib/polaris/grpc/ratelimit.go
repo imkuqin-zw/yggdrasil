@@ -24,7 +24,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg"
 	"github.com/imkuqin-zw/yggdrasil/pkg/log"
 	grpc2 "github.com/imkuqin-zw/yggdrasil/pkg/server/grpc"
-	"github.com/polarismesh/polaris-go/api"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

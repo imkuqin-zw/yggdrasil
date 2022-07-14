@@ -143,7 +143,6 @@ func IPs() []string {
 }
 
 func GetHostAndPortByAddr(addr net.Addr) (string, uint64) {
-
 	idx := strings.LastIndex(addr.String(), ":")
 	host := addr.String()[0:idx]
 	port, _ := strconv.ParseUint(addr.String()[idx+1:], 10, 64)

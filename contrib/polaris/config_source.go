@@ -9,9 +9,9 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
-	"github.com/polarismesh/polaris-go/api"
-	"github.com/polarismesh/polaris-go/pkg/config"
-	"github.com/polarismesh/polaris-go/pkg/model"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/api"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/pkg/config"
+	"github.com/imkuqin-zw/yggdrasil/third_party/polarismesh/polaris-go/pkg/model"
 	"gopkg.in/yaml.v2"
 )
 

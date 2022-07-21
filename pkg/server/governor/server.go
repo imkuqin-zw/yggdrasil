@@ -27,23 +27,25 @@ type Server struct {
 	info types.ServerInfo
 }
 
-func newServer(config *Config) *Server {
-	var listener, err = net.Listen("tcp4", config.Address())
+func newServer(cfg *Config) *Server {
+	var listener, err = net.Listen("tcp4", cfg.Address())
 	if err != nil {
 		log.Fatalf("governor start error: %s", err.Error())
 	}
-	config.Host, config.Port = xnet.GetHostAndPortByAddr(listener.Addr())
+	cfg.Host, cfg.Port = xnet.GetHostAndPortByAddr(listener.Addr())
+	_ = config.Set("yggdrasil.server.governor.host", cfg.Host)
+	_ = config.Set("yggdrasil.server.governor.port", cfg.Port)
 	return &Server{
 		Server: &http.Server{
-			Addr:    config.Address(),
+			Addr:    cfg.Address(),
 			Handler: governor.DefaultServeMux,
 		},
 		listener: listener,
-		Config:   config,
+		Config:   cfg,
 		info: server.NewInfo(
 			"http",
 			types.ServerKindGovernor,
-			fmt.Sprintf("%s:%d", config.Host, config.Port),
+			fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 			map[string]string{},
 		),
 	}

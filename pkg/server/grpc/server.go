@@ -39,35 +39,38 @@ type grpcServer struct {
 	info   types.ServerInfo
 }
 
-func newServer(config *Config) *grpcServer {
-	config.serverOptions = append(config.serverOptions,
-		grpc.ChainStreamInterceptor(config.streamInterceptors...),
-		grpc.ChainUnaryInterceptor(config.unaryInterceptors...),
+func newServer(cfg *Config) *grpcServer {
+	cfg.serverOptions = append(cfg.serverOptions,
+		grpc.ChainStreamInterceptor(cfg.streamInterceptors...),
+		grpc.ChainUnaryInterceptor(cfg.unaryInterceptors...),
 	)
 	var (
 		ln  net.Listener
 		err error
 	)
-	if config.TLS != nil {
-		tlsConfig, err := config.TLS.ServerTLSConfig()
+	if cfg.TLS != nil {
+		tlsConfig, err := cfg.TLS.ServerTLSConfig()
 		if err != nil {
 			log.Fatalf("fault to get tls config, err: %s", err.Error())
 		}
-		ln, err = tls.Listen(config.Network, config.Address(), tlsConfig)
+		ln, err = tls.Listen(cfg.Network, cfg.Address(), tlsConfig)
 	} else {
-		ln, err = net.Listen(config.Network, config.Address())
+		ln, err = net.Listen(cfg.Network, cfg.Address())
 	}
 	if err != nil {
 		log.Fatalf("fault to get listener, err: %s", err.Error())
+		return nil
 	}
-	config.Host, config.Port = xnet.GetHostAndPortByAddr(ln.Addr())
+	cfg.Host, cfg.Port = xnet.GetHostAndPortByAddr(ln.Addr())
+	_ = config.Set("yggdrasil.server.grpc.host", cfg.Host)
+	_ = config.Set("yggdrasil.server.grpc.port", cfg.Port)
 	return &grpcServer{
-		cfg: config,
+		cfg: cfg,
 		ln:  ln,
 		info: server.NewInfo(
 			"grpc",
 			types.ServerKindRpc,
-			fmt.Sprintf("%s:%d", config.Host, config.Port),
+			fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 			map[string]string{},
 		)}
 }

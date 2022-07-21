@@ -21,9 +21,9 @@ func Init(appName string, ops ...Option) error {
 	opts := &options{}
 	initLogger()
 	initInstanceInfo(appName)
+	applyOpt(opts, ops...)
 	initServer(opts)
 	initRegistry(opts)
-	applyOpt(opts, ops...)
 	initTracer()
 	app.Init(opts.getAppOpts()...)
 	initialized.Store(true)
@@ -41,9 +41,9 @@ func Run(appName string, ops ...Option) error {
 	opts := &options{}
 	initLogger()
 	initInstanceInfo(appName)
+	applyOpt(opts, ops...)
 	initServer(opts)
 	initRegistry(opts)
-	applyOpt(opts, ops...)
 	initTracer()
 	app.Init(opts.getAppOpts()...)
 	initialized.Store(true)
@@ -120,4 +120,8 @@ func applyOpt(opts *options, ops ...Option) {
 			log.Fatalf("fault to apply options, err: %s", err.Error())
 		}
 	}
+}
+
+func Endpoints() []types.ServerInfo {
+	return app.Endpoints()
 }

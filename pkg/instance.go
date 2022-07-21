@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	instanceInfo types.InstanceInfo
+	instanceInfo = &InstanceInfo{}
 	once         sync.Once
 )
 

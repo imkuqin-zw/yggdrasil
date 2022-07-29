@@ -21,6 +21,8 @@ type Stage uint32
 
 const (
 	StageMin Stage = iota
+	// StageBeforeStop before app start
+	StageBeforeStart
 	// StageBeforeStop before app stop
 	StageBeforeStop
 	// StageAfterStop after app stop
@@ -52,8 +54,9 @@ func New(inits ...Option) *Application {
 	app := &Application{
 		eg: errgroup.WithCancel(context.Background()),
 		hooks: map[Stage]*defers.Defer{
-			StageBeforeStop: defers.NewDefer(),
-			StageAfterStop:  defers.NewDefer(),
+			StageBeforeStart: defers.NewDefer(),
+			StageBeforeStop:  defers.NewDefer(),
+			StageAfterStop:   defers.NewDefer(),
 		},
 	}
 	for i := StageMin; i < StageMax; i++ {
@@ -124,6 +127,7 @@ func (app *Application) runHooks(k Stage) {
 }
 
 func (app *Application) startServers(ctx context.Context) error {
+	app.runHooks(StageBeforeStart)
 	eg := errgroup.WithContext(ctx)
 	var governorMeta []string
 	for _, s := range app.servers {
@@ -147,7 +151,6 @@ func (app *Application) startServers(ctx context.Context) error {
 				})
 				log.Infof("server start  %s", string(data))
 			}
-
 			err = s.Serve()
 			return
 		})

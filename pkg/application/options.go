@@ -24,6 +24,10 @@ func WithBeforeStopHook(fns ...func() error) Option {
 	return WithHook(StageBeforeStop, fns...)
 }
 
+func WithBeforeStartHook(fns ...func() error) Option {
+	return WithHook(StageBeforeStart, fns...)
+}
+
 func WithAfterStopHook(fns ...func() error) Option {
 	return WithHook(StageAfterStop, fns...)
 }

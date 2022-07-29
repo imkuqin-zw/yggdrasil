@@ -11,6 +11,7 @@ const (
 
 type ServerInfo interface {
 	Scheme() string
+	Host() string
 	Kind() ServerKind
 	Endpoint() string
 	Metadata() map[string]string

@@ -33,8 +33,6 @@ func newServer(cfg *Config) *Server {
 		log.Fatalf("governor start error: %s", err.Error())
 	}
 	cfg.Host, cfg.Port = xnet.GetHostAndPortByAddr(listener.Addr())
-	_ = config.Set("yggdrasil.server.governor.host", cfg.Host)
-	_ = config.Set("yggdrasil.server.governor.port", cfg.Port)
 	return &Server{
 		Server: &http.Server{
 			Addr:    cfg.Address(),

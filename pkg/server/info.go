@@ -17,6 +17,10 @@ func (si *info) Endpoint() string {
 	return fmt.Sprintf("%s://%s", si.scheme, si.host)
 }
 
+func (si *info) Host() string {
+	return si.host
+}
+
 func (si *info) Metadata() map[string]string {
 	return si.metadata
 }

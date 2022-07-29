@@ -62,8 +62,6 @@ func newServer(cfg *Config) *grpcServer {
 		return nil
 	}
 	cfg.Host, cfg.Port = xnet.GetHostAndPortByAddr(ln.Addr())
-	_ = config.Set("yggdrasil.server.grpc.host", cfg.Host)
-	_ = config.Set("yggdrasil.server.grpc.port", cfg.Port)
 	return &grpcServer{
 		cfg: cfg,
 		ln:  ln,

@@ -65,7 +65,7 @@ func (rb *resolverBuilder) Build(
 		target:  target,
 		options: dialOpts,
 	}
-	d.wg.Add(1)
+	// d.wg.Add(1)
 	go d.watcher()
 	d.ResolveNow(resolver.ResolveNowOptions{})
 	return d, nil
@@ -76,8 +76,8 @@ type polarisNamingResolver struct {
 	cancel context.CancelFunc
 	cc     resolver.ClientConn
 	// rn channel is used by ResolveNow() to force an immediate resolution of the target.
-	rn          chan struct{}
-	wg          sync.WaitGroup
+	rn chan struct{}
+	// wg          sync.WaitGroup
 	options     *dialOpts
 	target      resolver.Target
 	balanceOnce sync.Once
@@ -148,7 +148,7 @@ func (pr *polarisNamingResolver) doWatch(
 }
 
 func (pr *polarisNamingResolver) watcher() {
-	defer pr.wg.Done()
+	// defer pr.wg.Done()
 	var consumerAPI api.ConsumerAPI
 	var eventChan <-chan model.SubScribeEvent
 	ticker := time.NewTicker(5 * time.Second)

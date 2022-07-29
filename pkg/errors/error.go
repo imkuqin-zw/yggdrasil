@@ -1,11 +1,13 @@
 package errors
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"google.golang.org/genproto/googleapis/rpc/code"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -61,6 +63,17 @@ func (e *Error) WithStack() {
 
 func (e *Error) GRPCStatus() *status.Status {
 	return e.stu
+}
+
+func (e *Error) Reason() *errdetails.ErrorInfo {
+	reason := &errdetails.ErrorInfo{}
+	for _, detail := range e.stu.Details {
+		if detail.MessageIs(reason) {
+			_ = detail.UnmarshalTo(reason)
+			return reason
+		}
+	}
+	return nil
 }
 
 func stuCodeToHttpCode(stuCode code.Code) int32 {
@@ -169,6 +182,10 @@ func Errorf(code code.Code, msg string, details ...proto.Message) *Error {
 }
 
 func FromError(err error) *Error {
+	return FromErrorCode(err, code.Code_UNKNOWN)
+}
+
+func FromErrorCode(err error, code2 code.Code) *Error {
 	if err == nil {
 		return nil
 	}
@@ -176,11 +193,50 @@ func FromError(err error) *Error {
 	if ok {
 		return e
 	}
-	return New(code.Code_UNKNOWN, err)
+	return New(code2, err)
 }
 
 func FromProto(stu *status.Status) *Error {
 	return &Error{
 		stu: stu,
 	}
+}
+
+func WithReason(err error, reason Reason, metadata map[string]string) *Error {
+	e := FromErrorCode(err, reason.Code())
+	if e == nil {
+		return nil
+	}
+	e.WithDetails(NewReason(reason, metadata))
+	return e
+}
+
+func WithMessage(err error, ctx context.Context, msg Message) *Error {
+	e := FromError(err)
+	if e == nil {
+		return nil
+	}
+	e.WithDetails(NewLocalizedMsg(ctx, msg))
+	return e
+}
+
+func IsReason(err error, targets ...Reason) bool {
+	if err == nil {
+		return false
+	}
+	e, ok := err.(*Error)
+	if !ok {
+		return false
+	}
+	src := e.Reason()
+	if src == nil {
+		return false
+	}
+	for _, target := range targets {
+		if src.Reason == target.Reason() && src.Domain != target.Domain() {
+			return true
+		}
+	}
+
+	return false
 }

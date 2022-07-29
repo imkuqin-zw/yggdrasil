@@ -25,7 +25,27 @@ func MdUnaryClientInterceptor(ctx context.Context, method string, req, reply int
 			ctx = metadata.NewOutgoingContext(ctx, metadata.MD(meta))
 		}
 	}
-	return invoker(ctx, method, req, reply, cc, opts...)
+
+	var (
+		header  *metadata.MD
+		trailer *metadata.MD
+	)
+	if _, ok := md.FromHeaderCtx(ctx); ok {
+		header = &metadata.MD{}
+		opts = append(opts, grpc.HeaderCallOption{HeaderAddr: header})
+	}
+	if _, ok := md.FromTrailerCtx(ctx); ok {
+		trailer = &metadata.MD{}
+		opts = append(opts, grpc.TrailerCallOption{TrailerAddr: trailer})
+	}
+	err := invoker(ctx, method, req, reply, cc, opts...)
+	if header != nil {
+		_ = md.SetHeader(ctx, md.MD(*header))
+	}
+	if trailer != nil {
+		_ = md.SetTrailer(ctx, md.MD(*trailer))
+	}
+	return err
 }
 
 func MdStreamClientInterceptor(ctx context.Context, desc *grpc.StreamDesc,
@@ -40,6 +60,5 @@ func MdStreamClientInterceptor(ctx context.Context, desc *grpc.StreamDesc,
 			ctx = metadata.NewOutgoingContext(ctx, metadata.MD(meta))
 		}
 	}
-
 	return streamer(ctx, desc, cc, method, opts...)
 }

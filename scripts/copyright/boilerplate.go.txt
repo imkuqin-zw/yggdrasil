@@ -12,27 +12,3 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
-
-import (
-	"flag"
-
-	"github.com/imkuqin-zw/yggdrasil/internal/protogen/generr"
-	"google.golang.org/protobuf/compiler/protogen"
-	"google.golang.org/protobuf/types/pluginpb"
-)
-
-func main() {
-	protogen.Options{
-		ParamFunc: flag.CommandLine.Set,
-	}.Run(func(gen *protogen.Plugin) error {
-		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
-		for _, f := range gen.Files {
-			if !f.Generate {
-				continue
-			}
-			genrpc.GenerateFile(gen, f)
-		}
-		return nil
-	})
-}

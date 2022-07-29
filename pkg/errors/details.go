@@ -4,12 +4,14 @@ import (
 	"context"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/md"
+	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 type Reason interface {
 	Reason() string
 	Domain() string
+	Code() code.Code
 }
 
 type Message interface {

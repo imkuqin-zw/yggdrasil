@@ -4,8 +4,18 @@ import (
 	"fmt"
 
 	error2 "github.com/imkuqin-zw/yggdrasil/proto/yggdrasil/error"
+	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
+)
+
+const (
+	eCodeMin = uint32(code.Code_OK)
+	eCodeMax = uint32(code.Code_DATA_LOSS)
+)
+
+const (
+	codePackage = protogen.GoImportPath("google.golang.org/genproto/googleapis/rpc/code")
 )
 
 func GenerateFile(gen *protogen.Plugin, file *protogen.File) {
@@ -29,7 +39,8 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 	g.P()
 
 	reasons := &Reasons{
-		Domain: string(file.Desc.Package()),
+		Domain:      string(file.Desc.Package()),
+		CodePackage: g.QualifiedGoIdent(codePackage.Ident("")),
 	}
 	for _, enum := range file.Enums {
 		genErrorsReason(enum, reasons)
@@ -42,13 +53,18 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 }
 
 func genErrorsReason(enum *protogen.Enum, reasons *Reasons) {
-	defaultCode := proto.GetExtension(enum.Desc.Options(), error2.E_DefaultReason)
-	code := 0
-	if ok := defaultCode.(int32); ok != 0 {
-		code = int(ok)
+	if !proto.HasExtension(enum.Desc.Options(), error2.E_DefaultReason) {
+		return
 	}
-	if code > 600 || code < 0 {
-		panic(fmt.Sprintf("Enum '%s' range must be greater than 0 and less than or equal to 600", string(enum.Desc.Name())))
+	rw := ReasonWrapper{Name: string(enum.Desc.Name()), Codes: map[int32]uint32{}}
+	for _, value := range enum.Values {
+		errCode := proto.GetExtension(value.Desc.Options(), error2.E_Code)
+		eCode := errCode.(uint32)
+		if eCode < eCodeMin || eCode > eCodeMax {
+			panic(fmt.Sprintf("code of Enum '%s'.'%s' range must be between %d and %d",
+				string(enum.Desc.Name()), string(value.Desc.Name()), eCodeMin, eCodeMax))
+		}
+		rw.Codes[int32(value.Desc.Number())] = eCode
 	}
-	reasons.Reason = append(reasons.Reason, ReasonWrapper{Name: string(enum.Desc.Name())})
+	reasons.Reason = append(reasons.Reason, rw)
 }

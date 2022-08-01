@@ -17,18 +17,28 @@ package zap
 import (
 	"testing"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/log"
+	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
 )
 
 func Test_Logger(t *testing.T) {
-	lg := (&Config{Console: struct {
-		Enable  bool
-		Encoder *zapcore.EncoderConfig
-	}{Enable: true}}).Build()
+	lg := (&Config{
+		Console: struct {
+			Enable  bool
+			Encoder *zapcore.EncoderConfig
+		}{Enable: true},
+		File: struct {
+			Enable bool
+			FileConfig
+			Encoder *zapcore.EncoderConfig
+		}{Enable: true},
+	}).Build()
 	var dd = struct {
 		A string
 		B int
 	}{"a", 2}
-	lg.Warn("fdaf", "k1", 1, "k2", dd)
-	lg.Fatalf()
+	log.SetLogger(lg)
+	err := errors.New("fdsafdasf")
+	log.ErrorFiled("fdasf", log.String("fd", "fd"), log.Any("dd", dd), log.Err(err))
 }

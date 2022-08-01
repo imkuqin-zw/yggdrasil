@@ -108,7 +108,7 @@ func initTracer() {
 
 func initInstanceInfo(appName string) {
 	if err := config.Set("yggdrasil.application.name", appName); err != nil {
-		log.Fatalf("fault to set application name, err: %s", err.Error())
+		log.FatalFiled("fault to set application name", log.Err(err))
 	}
 	pkg.InitInstanceInfo()
 }
@@ -119,19 +119,35 @@ func initLogger() {
 		lv := config.GetBytes("yggdrasil.logger.level", []byte("debug"))
 		var level types.Level
 		if err := level.UnmarshalText(lv); err != nil {
-			log.Fatalf("fault to unmarshal std logger level, err: %s", err.Error())
+			log.FatalFiled("fault to unmarshal std logger level", log.Err(err))
 		}
 		log.SetLevel(level)
+		if config.GetBool("stdLogger.openMsgFormat", false) {
+			if lg, ok := log.GetRaw().(*log.StdLogger); ok {
+				lg.OpenMsgFormat()
+			}
+		}
 	} else {
 		lg := log.GetLogger(logName)
 		log.SetLogger(lg)
 	}
+	timeEncoder := config.GetString("yggdrasil.logger.timeEncoder", "RFC3339")
+	if err := log.SetTimeEncoderByName(timeEncoder); err != nil {
+		log.FatalFiled("fault to set log time encoder", log.Err(err))
+		return
+	}
+	durationEncoder := config.GetString("yggdrasil.logger.durationEncoder", "millis")
+	if err := log.SetDurationEncoderByName(durationEncoder); err != nil {
+		log.FatalFiled("fault to set log duration encoder", log.Err(err))
+		return
+	}
+	log.SetStackPrintState(config.GetBool("yggdrasil.logger.enablePrintStack", false))
 }
 
 func applyOpt(opts *options, ops ...Option) {
 	for _, f := range ops {
 		if err := f(opts); err != nil {
-			log.Fatalf("fault to apply options, err: %s", err.Error())
+			log.FatalFiled("fault to apply options", log.Err(err))
 		}
 	}
 }

@@ -136,7 +136,3 @@ func NewDefaultLogger() types.Logger {
 	cfg.Level = config.GetString("yggdrasil.logger.level", "debug")
 	return cfg.Build()
 }
-
-func watchConfig() {
-
-}

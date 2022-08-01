@@ -93,17 +93,15 @@ func (config *Config) Build() *Logger {
 	if config.File.Enable {
 		if config.File.Encoder == nil {
 			config.File.Encoder = &zapcore.EncoderConfig{
-				TimeKey:       "ts",
-				LevelKey:      "lv",
-				NameKey:       "Logger",
-				CallerKey:     "caller",
-				MessageKey:    "msg",
-				StacktraceKey: "stack",
-				LineEnding:    zapcore.DefaultLineEnding,
-				EncodeLevel:   zapcore.LowercaseLevelEncoder,
-				EncodeTime: func(t time.Time, encoder zapcore.PrimitiveArrayEncoder) {
-					encoder.AppendInt64(t.Unix())
-				},
+				TimeKey:        "ts",
+				LevelKey:       "lv",
+				NameKey:        "Logger",
+				CallerKey:      "caller",
+				MessageKey:     "msg",
+				StacktraceKey:  "stack",
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeLevel:    zapcore.LowercaseLevelEncoder,
+				EncodeTime:     zapcore.EpochMillisTimeEncoder,
 				EncodeDuration: zapcore.SecondsDurationEncoder,
 				EncodeCaller:   zapcore.ShortCallerEncoder,
 			}
@@ -113,17 +111,15 @@ func (config *Config) Build() *Logger {
 	if config.Console.Enable {
 		if config.Console.Encoder == nil {
 			config.Console.Encoder = &zapcore.EncoderConfig{
-				TimeKey:       "ts",
-				LevelKey:      "lv",
-				NameKey:       "Logger",
-				CallerKey:     "caller",
-				MessageKey:    "msg",
-				StacktraceKey: "stack",
-				LineEnding:    zapcore.DefaultLineEnding,
-				EncodeLevel:   consoleEncodeLevel,
-				EncodeTime: func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-					enc.AppendString(t.Format("2006-01-02 15:04:05"))
-				},
+				TimeKey:        "ts",
+				LevelKey:       "lv",
+				NameKey:        "Logger",
+				CallerKey:      "caller",
+				MessageKey:     "msg",
+				StacktraceKey:  "stack",
+				LineEnding:     zapcore.DefaultLineEnding,
+				EncodeLevel:    consoleEncodeLevel,
+				EncodeTime:     zapcore.RFC3339TimeEncoder,
 				EncodeDuration: zapcore.SecondsDurationEncoder,
 				EncodeCaller:   zapcore.ShortCallerEncoder,
 			}

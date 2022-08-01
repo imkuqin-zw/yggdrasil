@@ -17,6 +17,8 @@ package log
 import (
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 func Test_logger(t *testing.T) {
@@ -31,10 +33,10 @@ func Test_logger(t *testing.T) {
 
 	Error("Error", "Error")
 	Errorf("this %s", "Errorf")
-
-	//Fatal("Fatal", "Fatal")
-	//Fatalf("this %s", "Fatalf")
-	//Fatalw("Fatalw", "type", "Fatalw")
+	lg.(*StdLogger).OpenMsgFormat()
+	DebugFiled("access", String("fd", "fd"), Int("fd", 456))
+	InfoFiled("access", String("fd", "fd"), Int("fd", 456))
+	ErrorFiled("access", String("fd", "fd"), Int("fd", 456), Err(errors.New("fdasfdf")))
 }
 
 func Test(t *testing.T) {

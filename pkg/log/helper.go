@@ -15,21 +15,12 @@
 package log
 
 import (
-	"log"
+	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 )
-
-var lg types.Logger
-
-func init() {
-	lg = &StdLogger{level: types.LvDebug, lg: log.Default()}
-}
-
-func SetLogger(logger types.Logger) {
-	lg = logger
-}
 
 // Debug is debug level
 func Debug(args ...interface{}) {
@@ -97,4 +88,78 @@ func Enable(level types.Level) bool {
 
 func GetRaw() interface{} {
 	return lg
+}
+
+func DebugFiled(msg string, fields ...Field) {
+	if Enable(types.LvDebug) {
+		buf, err := enc.Encode(fields)
+		if err != nil {
+			lg.Errorf("encode error: %v", err)
+			return
+		}
+		lg.Debugw(msg, "fields", json.RawMessage(buf.Bytes()))
+	}
+}
+
+func InfoFiled(msg string, fields ...Field) {
+	if Enable(types.LvInfo) {
+		buf, err := enc.Encode(fields)
+		if err != nil {
+			lg.Errorf("encode error: %v", err)
+			return
+		}
+		lg.Infow(msg, "fields", json.RawMessage(buf.Bytes()))
+	}
+}
+
+func WarnFiled(msg string, fields ...Field) {
+	if Enable(types.LvWarn) {
+		buf, err := enc.Encode(fields)
+		if err != nil {
+			lg.Errorf("encode error: %v", err)
+			return
+		}
+		lg.Warnw(msg, "fields", json.RawMessage(buf.Bytes()))
+	}
+}
+
+func ErrorFiled(msg string, fields ...Field) {
+	if Enable(types.LvError) {
+		buf, err := enc.Encode(fields)
+		if err != nil {
+			lg.Errorf("encode error: %v", err)
+			return
+		}
+		lg.Errorw(msg, "fields", json.RawMessage(buf.Bytes()))
+		if printStack {
+			for _, item := range fields {
+				if item.Type == ErrorType {
+					if item, ok := item.Interface.(fmt.Formatter); ok {
+						_, _ = fmt.Fprintf(os.Stderr, "%+v\n", item)
+					}
+				}
+			}
+		}
+	}
+}
+
+func FatalFiled(msg string, fields ...Field) {
+	if Enable(types.LvFault) {
+		buf, err := enc.Encode(fields)
+		if err != nil {
+			lg.Errorf("encode error: %v", err)
+			return
+		}
+		lg.Fatalw(msg, "fields", json.RawMessage(buf.Bytes()))
+		if printStack {
+			for _, item := range fields {
+				if item.Type == ErrorType {
+					if item, ok := item.Interface.(fmt.Formatter); ok {
+						_, _ = fmt.Fprintf(os.Stderr, "%+v\n", item)
+					}
+				}
+			}
+		}
+	}
+	os.Exit(1)
 }

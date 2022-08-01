@@ -18,7 +18,81 @@ import (
 	"log"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/pkg/errors"
 )
+
+var (
+	lg         types.Logger
+	enc        Encoder
+	printStack bool
+)
+
+func init() {
+	lg = &StdLogger{level: types.LvDebug, lg: log.Default(), kvsMsgFormat: "%-8s%s "}
+	enc = &jsonEncoder{
+		EncodeTime:     RFC3339TimeEncoder,
+		EncodeDuration: MillisDurationEncoder,
+		spaced:         false,
+		buf:            Get(),
+	}
+	printStack = true
+}
+
+func SetLogger(logger types.Logger) {
+	lg = logger
+}
+
+func SetDurationEncoder(de DurationEncoder) {
+	enc.SetDurationEncoder(de)
+}
+
+func SetTimeEncoder(te TimeEncoder) {
+	enc.SetTimeEncoder(te)
+}
+
+func SetDurationEncoderByName(name string) error {
+	var de DurationEncoder
+	switch name {
+	case "seconds":
+		de = SecondsDurationEncoder
+	case "nanos":
+		de = NanosDurationEncoder
+	case "millis":
+		de = MillisDurationEncoder
+	case "string":
+		de = StringDurationEncoder
+	default:
+		return errors.New("unknown time encoder")
+	}
+	enc.SetDurationEncoder(de)
+	return nil
+}
+
+func SetTimeEncoderByName(name string) error {
+	var te TimeEncoder
+	switch name {
+	case "RFC3339":
+		te = RFC3339TimeEncoder
+	case "RFC3339Nano":
+		te = RFC3339NanoTimeEncoder
+	case "ISO8601":
+		te = ISO8601TimeEncoder
+	case "epoch":
+		te = EpochTimeEncoder
+	case "epochNanos":
+		te = EpochNanosTimeEncoder
+	case "epochMillis":
+		te = EpochMillisTimeEncoder
+	default:
+		return errors.New("unknown time encoder")
+	}
+	enc.SetTimeEncoder(te)
+	return nil
+}
+
+func SetStackPrintState(b bool) {
+	printStack = b
+}
 
 var loggerConstructors = make(map[string]types.LoggerConstructor)
 

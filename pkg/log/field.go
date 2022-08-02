@@ -22,6 +22,7 @@ package log
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -92,6 +93,8 @@ const (
 	ErrorType
 	// SkipType indicates that the field is a no-op.
 	SkipType
+	// CtxType indicates that the field is a context.
+	CtxType
 
 	// InlineMarshalerType indicates that the field carries an ObjectMarshaler
 	// that should be inlined.
@@ -175,6 +178,9 @@ func (f Field) AddTo(enc ObjectEncoder) {
 	case ErrorType:
 		err = encodeError(f.Key, f.Interface.(error), enc)
 	case SkipType:
+		break
+	case CtxType:
+		err = encodeContext(f.Interface.(context.Context), enc)
 		break
 	default:
 		panic(fmt.Sprintf("unknown field type: %v", f))
@@ -738,6 +744,12 @@ func Err(err error) Field {
 // is shorter and less repetitive.
 func NamedErr(key string, err error) Field {
 	return Field{Key: key, Type: ErrorType, Interface: err}
+}
+
+// Context constructs a Field carries a context. Context which with trace span
+// will have their trace ID and span ID stored under traceID and spanID.
+func Context(ctx context.Context) Field {
+	return Field{Type: CtxType, Interface: ctx}
 }
 
 // Array constructs a field with the given key and ArrayMarshaler. It provides

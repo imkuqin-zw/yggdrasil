@@ -66,7 +66,7 @@ func Run(appName string, ops ...Option) error {
 
 func Stop() error {
 	if err := app.Stop(); err != nil {
-		log.Errorf("fault to stop yggdrasil application, err: %+v", err)
+		log.ErrorFiled("fault to stop yggdrasil application", log.Err(err))
 		return err
 	}
 	return nil
@@ -89,7 +89,7 @@ func initRegistry(opts *options) {
 	}
 	f := registry.GetConstructor(registerName)
 	if f == nil {
-		log.Warnf("not found registry, name: %s", registerName)
+		log.WarnFiled("not found registry", log.String("name", registerName))
 		return
 	}
 	_ = WithRegistry(f())(opts)
@@ -101,7 +101,7 @@ func initTracer() {
 		if constructor != nil {
 			otel.SetTracerProvider(constructor(pkg.Name()))
 		} else {
-			log.Warnf("not found tracer provider, name: %s", tracerName)
+			log.WarnFiled("not found tracer provider", log.String("name", tracerName))
 		}
 	}
 }

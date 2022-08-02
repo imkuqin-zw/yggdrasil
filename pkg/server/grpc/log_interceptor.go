@@ -16,15 +16,13 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/log"
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )
 
@@ -37,10 +35,7 @@ func init() {
 func LogStreamServerInterceptor() grpc.StreamServerInterceptor {
 	slowThreshold := config.GetDuration("yggdrasil.server.grpc.slowThreshold", time.Second)
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
-		var (
-			startTime = time.Now()
-			stack     = ""
-		)
+		var startTime = time.Now()
 		defer func() {
 			cost := time.Since(startTime)
 			if rec := recover(); rec != nil {
@@ -48,42 +43,25 @@ func LogStreamServerInterceptor() grpc.StreamServerInterceptor {
 				case error:
 					err = rec
 				default:
-					err = fmt.Errorf("%v", rec)
+					err = errors.New(fmt.Sprintf("%v", rec))
 				}
-				stackArr := make([]byte, 4096)
-				stack = xstrings.Bytes2str(stackArr[:runtime.Stack(stackArr, true)])
+			}
+			fields := []log.Field{
+				log.String("scheme", "grpc"),
+				log.String("type", "stream"),
+				log.String("method", info.FullMethod),
+				log.Duration("cost", cost),
+				log.Context(stream.Context()),
 			}
 			if err != nil {
-				if log.Enable(types.LvError) {
-					filed := map[string]interface{}{
-						"scheme": "grpc",
-						"type":   "stream",
-						"method": info.FullMethod,
-						"cost":   cost.Seconds(),
-						"err":    err.Error(),
-					}
-					if len(stack) != 0 {
-						filed["stack"] = stack
-					}
-					data, _ := json.Marshal(filed)
-					log.Errorf("access\t%s", xstrings.Bytes2str(data))
-				}
+				log.ErrorFiled("access", append(fields, log.Err(err))...)
 				return
 			}
-			if log.Enable(types.LvInfo) {
-				filed := map[string]interface{}{
-					"scheme": "grpc",
-					"type":   "stream",
-					"method": info.FullMethod,
-					"cost":   cost.Seconds(),
-				}
-				data, _ := json.Marshal(filed)
-				if log.Enable(types.LvWarn) && slowThreshold <= cost {
-					log.Warnf("access\t%s", xstrings.Bytes2str(data))
-				} else {
-					log.Infof("access\t%s", xstrings.Bytes2str(data))
-				}
+			if log.Enable(types.LvWarn) && slowThreshold <= cost {
+				log.WarnFiled("access", fields...)
+				return
 			}
+			log.InfoFiled("access", fields...)
 		}()
 		return handler(srv, stream)
 	}
@@ -93,10 +71,7 @@ func LogStreamServerInterceptor() grpc.StreamServerInterceptor {
 func LogUnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	slowThreshold := config.GetDuration("yggdrasil.server.grpc.slowThreshold", time.Second)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-		var (
-			startTime = time.Now()
-			stack     = ""
-		)
+		var startTime = time.Now()
 		defer func() {
 			cost := time.Since(startTime)
 			if rec := recover(); rec != nil {
@@ -104,43 +79,25 @@ func LogUnaryServerInterceptor() grpc.UnaryServerInterceptor {
 				case error:
 					err = rec
 				default:
-					err = fmt.Errorf("%v", rec)
+					err = errors.New(fmt.Sprintf("%v", rec))
 				}
-				stackArr := make([]byte, 4096)
-				stack = xstrings.Bytes2str(stackArr[:runtime.Stack(stackArr, true)])
+			}
+			fields := []log.Field{
+				log.String("scheme", "grpc"),
+				log.String("type", "unary"),
+				log.String("method", info.FullMethod),
+				log.Duration("cost", cost),
+				log.Context(ctx),
 			}
 			if err != nil {
-				if log.Enable(types.LvError) {
-					filed := map[string]interface{}{
-						"scheme": "grpc",
-						"type":   "unary",
-						"method": info.FullMethod,
-						"cost":   cost.Seconds(),
-						"err":    err.Error(),
-					}
-					if len(stack) != 0 {
-						filed["stack"] = stack
-					}
-					data, _ := json.Marshal(filed)
-					log.Errorf("access\t%s", xstrings.Bytes2str(data))
-				}
+				log.ErrorFiled("access", append(fields, log.Err(err))...)
 				return
 			}
-			if log.Enable(types.LvInfo) {
-				filed := map[string]interface{}{
-					"scheme": "grpc",
-					"type":   "unary",
-					"method": info.FullMethod,
-					"cost":   cost.Seconds(),
-				}
-				data, _ := json.Marshal(filed)
-				if log.Enable(types.LvWarn) && slowThreshold <= cost {
-					log.Warnf("access\t%s", xstrings.Bytes2str(data))
-				} else {
-					log.Infof("access\t%s", xstrings.Bytes2str(data))
-				}
-
+			if log.Enable(types.LvWarn) && slowThreshold <= cost {
+				log.WarnFiled("access", fields...)
+				return
 			}
+			log.InfoFiled("access", fields...)
 		}()
 		return handler(ctx, req)
 	}

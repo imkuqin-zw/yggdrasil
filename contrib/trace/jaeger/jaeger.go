@@ -16,10 +16,10 @@ package jaeger
 
 import (
 	"context"
-	"log"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/defers"
+	"github.com/imkuqin-zw/yggdrasil/pkg/log"
 	trace2 "github.com/imkuqin-zw/yggdrasil/pkg/trace"
 	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -47,7 +47,7 @@ func (config *Config) Build() trace.TracerProvider {
 	// Create the Jaeger exporter
 	exp, err := jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(config.Endpoint)))
 	if err != nil {
-		log.Fatalf("fault to new jaeger collector, err: %+v", err)
+		log.FatalFiled("fault to new jaeger collector", log.Err(err))
 		return nil
 	}
 	tp := tracesdk.NewTracerProvider(

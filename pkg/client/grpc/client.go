@@ -42,7 +42,7 @@ func DialByConfig(ctx context.Context, config *Config) *grpc.ClientConn {
 	for _, name := range config.UnaryFilter {
 		f, ok := unaryInterceptor[name]
 		if !ok {
-			log.Warnf("not found grpc unary interceptor, name: %s", name)
+			log.WarnFiled("not found grpc unary interceptor", log.String("name", name))
 			continue
 		}
 		config.WithUnaryInterceptor(f(config.Name))
@@ -50,7 +50,7 @@ func DialByConfig(ctx context.Context, config *Config) *grpc.ClientConn {
 	for _, name := range config.StreamFilter {
 		f, ok := streamInterceptor[name]
 		if !ok {
-			log.Warnf("not found grpc stream interceptor, name: %s", name)
+			log.WarnFiled("not found grpc stream interceptor", log.String("name", name))
 			continue
 		}
 		config.WithStreamInterceptor(f(config.Name))
@@ -63,7 +63,7 @@ func DialByConfig(ctx context.Context, config *Config) *grpc.ClientConn {
 	if config.TLS != nil {
 		tlsConfig, err := config.TLS.ServerTLSConfig()
 		if err != nil {
-			log.Fatalf("fault to get tls config, err: %s", err.Error())
+			log.FatalFiled("fault to get tls config", log.Err(err))
 		}
 		config.WithDialOption(grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	} else {
@@ -90,9 +90,9 @@ func DialByConfig(ctx context.Context, config *Config) *grpc.ClientConn {
 	cc, err := grpc.DialContext(ctx, config.Target, config.dialOptions...)
 	if err != nil {
 		if config.OnDialError == "panic" {
-			log.Fatalf("dial grpc\terr: %s", err.Error())
+			log.FatalFiled("dial grpc", log.Err(err))
 		} else {
-			log.Errorf("dial grpc\terr: %s", err.Error())
+			log.ErrorFiled("dial grpc", log.Err(err))
 		}
 	}
 	return cc

@@ -16,7 +16,6 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -25,7 +24,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/errors"
 	"github.com/imkuqin-zw/yggdrasil/pkg/log"
 	"github.com/imkuqin-zw/yggdrasil/pkg/types"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
+	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/grpc"
 )
 
@@ -46,52 +45,29 @@ func LoggerUnaryClientInterceptor(serverName string) grpc.UnaryClientInterceptor
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		beg := time.Now()
 		err := invoker(ctx, method, req, reply, cc, opts...)
+		cost := time.Since(beg)
+		fields := []log.Field{
+			log.String("scheme", "grpc"),
+			log.String("method", method),
+			log.String("type", "unary"),
+			log.Duration("cost", cost),
+			log.Context(ctx),
+		}
 		if err != nil {
 			e := errors.FromError(err)
+			fields = append(fields, log.Int32("code", e.Code()), log.Err(err))
 			if e.HttpCode() < http.StatusInternalServerError {
-				if log.Enable(types.LvWarn) {
-					filed := map[string]interface{}{
-						"scheme": "grpc",
-						"method": method,
-						"type":   "unary",
-						"cost":   time.Since(beg).Seconds(),
-						"err":    err.Error(),
-						"code":   e.HttpCode(),
-					}
-					data, _ := json.Marshal(filed)
-					log.Warnf("call\t%s", xstrings.Bytes2str(data))
-				}
+				log.WarnFiled("call", fields...)
 			} else {
-				if log.Enable(types.LvError) {
-					filed := map[string]interface{}{
-						"scheme": "grpc",
-						"method": method,
-						"type":   "unary",
-						"cost":   time.Since(beg).Seconds(),
-						"err":    err.Error(),
-						"code":   e.HttpCode(),
-					}
-					data, _ := json.Marshal(filed)
-					log.Errorf("call\t%s", xstrings.Bytes2str(data))
-				}
+				log.ErrorFiled("call", fields...)
 			}
 			return err
 		} else {
-			if log.Enable(types.LvInfo) {
-				cost := time.Since(beg)
-				filed := map[string]interface{}{
-					"scheme": "grpc",
-					"method": method,
-					"type":   "unary",
-					"cost":   cost.Seconds(),
-					"code":   http.StatusOK,
-				}
-				data, _ := json.Marshal(filed)
-				if cost >= slowThreshold && log.Enable(types.LvWarn) {
-					log.Warnf("call \t%s", xstrings.Bytes2str(data))
-				} else {
-					log.Infof("call\t%s", xstrings.Bytes2str(data))
-				}
+			fields = append(fields, log.Int32("code", int32(code.Code_OK)))
+			if cost >= slowThreshold && log.Enable(types.LvWarn) {
+				log.WarnFiled("call", fields...)
+			} else {
+				log.InfoFiled("call", fields...)
 			}
 		}
 		return nil
@@ -103,51 +79,28 @@ func LoggerStreamClientInterceptor(serverName string) grpc.StreamClientIntercept
 	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 		beg := time.Now()
 		cs, err := streamer(ctx, desc, cc, method, opts...)
+		cost := time.Since(beg)
+		fields := []log.Field{
+			log.String("scheme", "grpc"),
+			log.String("method", method),
+			log.String("type", "stream"),
+			log.Duration("cost", cost),
+		}
 		if err != nil {
 			e := errors.FromError(err)
+			fields = append(fields, log.Int32("code", e.Code()), log.Err(err))
 			if e.HttpCode() < http.StatusInternalServerError {
-				if log.Enable(types.LvWarn) {
-					filed := map[string]interface{}{
-						"scheme": "grpc",
-						"method": method,
-						"type":   "stream",
-						"cost":   time.Since(beg),
-						"err":    err.Error(),
-						"code":   e.HttpCode(),
-					}
-					data, _ := json.Marshal(filed)
-					log.Warnf("call\t%s", xstrings.Bytes2str(data))
-				}
+				log.WarnFiled("call", fields...)
 			} else {
-				if log.Enable(types.LvError) {
-					filed := map[string]interface{}{
-						"scheme": "grpc",
-						"method": method,
-						"type":   "stream",
-						"cost":   time.Since(beg),
-						"err":    err.Error(),
-						"code":   e.HttpCode(),
-					}
-					data, _ := json.Marshal(filed)
-					log.Errorf("call\t%s", xstrings.Bytes2str(data))
-				}
+				log.ErrorFiled("call", fields...)
 			}
+			return cs, err
 		} else {
-			if log.Enable(types.LvInfo) {
-				cost := time.Since(beg)
-				filed := map[string]interface{}{
-					"scheme": "grpc",
-					"method": method,
-					"type":   "stream",
-					"cost":   cost,
-					"code":   http.StatusOK,
-				}
-				data, _ := json.Marshal(filed)
-				if cost > slowThreshold && log.Enable(types.LvWarn) {
-					log.Warnf("call\t%s", xstrings.Bytes2str(data))
-				} else {
-					log.Infof("call\t%s", xstrings.Bytes2str(data))
-				}
+			fields = append(fields, log.Int32("code", int32(code.Code_OK)))
+			if cost >= slowThreshold && log.Enable(types.LvWarn) {
+				log.WarnFiled("call", fields...)
+			} else {
+				log.InfoFiled("call", fields...)
 			}
 		}
 		return cs, err

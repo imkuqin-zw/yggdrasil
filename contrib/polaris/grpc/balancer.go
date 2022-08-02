@@ -88,7 +88,7 @@ func (p *polarisNamingBalancer) createSubConnection(addr resolver.Address) {
 		// a is a new address (not existing in b.subConns).
 		sc, err := p.cc.NewSubConn([]resolver.Address{addr}, balancer.NewSubConnOptions{HealthCheckEnabled: true})
 		if err != nil {
-			log.Warnf("[Polaris]balancer: failed to create new SubConn: %v", err)
+			log.WarnFiled("failed to create new SubConn", log.Err(err))
 			return
 		}
 		p.subConns[addr] = sc
@@ -104,7 +104,7 @@ func (p *polarisNamingBalancer) createSubConnection(addr resolver.Address) {
 // returns a nil error.  Any other errors are currently ignored.
 func (p *polarisNamingBalancer) UpdateClientConnState(state balancer.ClientConnState) error {
 	if log.Enable(types.LvInfo) {
-		grpclog.Infof("balancer: got new ClientConn state: %+v", state)
+		grpclog.Infof("got new ClientConn state: %+v", state)
 	}
 	if len(state.ResolverState.Addresses) == 0 {
 		p.ResolverError(errors.New("produced zero addresses"))

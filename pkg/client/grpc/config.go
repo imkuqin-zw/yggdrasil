@@ -80,6 +80,6 @@ func (c *Config) SetDefault() {
 	if c.Balancer == "" {
 		c.Balancer = roundrobin.Name
 	}
-	c.UnaryFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata", "log"}, c.UnaryFilter...))
-	c.StreamFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata", "log"}, c.StreamFilter...))
+	c.UnaryFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata"}, c.UnaryFilter...))
+	c.StreamFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata"}, c.StreamFilter...))
 }

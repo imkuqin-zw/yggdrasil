@@ -131,7 +131,7 @@ func newLogger(config *Config) *Logger {
 func NewDefaultLogger() types.Logger {
 	cfg := &Config{}
 	if err := config.Get("zapLogger").Scan(cfg); err != nil {
-		log.Fatalf("fault to load zap logger config, err: %s", err)
+		log.FatalFiled("fault to load zap logger config", log.Err(err))
 	}
 	cfg.Level = config.GetString("yggdrasil.logger.level", "debug")
 	return cfg.Build()

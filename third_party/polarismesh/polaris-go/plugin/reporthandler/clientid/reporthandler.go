@@ -57,7 +57,7 @@ func (h *ReportHandler) Name() string {
 // Init 初始化插件
 func (h *ReportHandler) Init(ctx *plugin.InitContext) error {
 	h.PluginBase = plugin.NewPluginBase(ctx)
-	h.clientID = uuid.NewString()
+	h.clientID = uuid.New().String()
 	return nil
 }
 

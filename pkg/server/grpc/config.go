@@ -74,14 +74,12 @@ func (c *Config) Build() *grpcServer {
 	if c.Network == "" {
 		c.Network = "tcp"
 	}
-
-	c.UnaryFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata", "log"}, c.UnaryFilter...))
-	c.StreamFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata", "log"}, c.StreamFilter...))
-
+	c.UnaryFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata"}, c.UnaryFilter...))
+	c.StreamFilter = xarray.RemoveReplaceStrings(append([]string{"error", "metadata"}, c.StreamFilter...))
 	for _, name := range c.UnaryFilter {
 		f, ok := unaryInterceptor[name]
 		if !ok {
-			log.Warnf("not found grpc unary interceptor, name: %s", name)
+			log.WarnFiled("not found grpc unary interceptor", log.String("name", "name"))
 		}
 		c.WithUnaryInterceptor(f())
 	}

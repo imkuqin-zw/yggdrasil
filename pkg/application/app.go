@@ -157,14 +157,11 @@ func (app *Application) startServers(ctx context.Context) error {
 	for _, s := range app.servers {
 		s := s
 		eg.Go(func(ctx context.Context) (err error) {
-			if log.Enable(types.LvInfo) {
-				info := s.Info()
-				data, _ := json.Marshal(map[string]interface{}{
-					"kind":     info.Kind(),
-					"endpoint": info.Endpoint(),
-				})
-				log.Infof("server start  %s", string(data))
-			}
+			info := s.Info()
+			log.InfoFiled("server start",
+				log.String("kind", string(info.Kind())),
+				log.String("endpoint", info.Endpoint()),
+			)
 			err = s.Serve()
 			return
 		})

@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
 )
 
@@ -28,7 +27,7 @@ type flag struct {
 	fs *flag2.FlagSet
 }
 
-func (fs *flag) Read() (types.ConfigSourceData, error) {
+func (fs *flag) Read() (source.SourceData, error) {
 	if !fs.fs.Parsed() {
 		_ = fs.fs.Parse(os.Args[1:])
 		for len(fs.fs.Args()) != 0 {
@@ -58,7 +57,7 @@ func (fs *flag) Read() (types.ConfigSourceData, error) {
 		return
 	}
 	fs.fs.VisitAll(visitFn)
-	cs := source.NewMapSourceData(types.ConfigPriorityEnv, result)
+	cs := source.NewMapSourceData(source.PriorityFlag, result)
 	return cs, nil
 }
 
@@ -77,7 +76,7 @@ func (fs *flag) Changeable() bool {
 	return false
 }
 
-func (fs *flag) Watch() (<-chan types.ConfigSourceData, error) {
+func (fs *flag) Watch() (<-chan source.SourceData, error) {
 	return nil, nil
 }
 
@@ -89,7 +88,7 @@ func (fs *flag) Close() error {
 	return nil
 }
 
-func NewSource(fs ...*flag2.FlagSet) types.ConfigSource {
+func NewSource(fs ...*flag2.FlagSet) source.Source {
 	if len(fs) == 0 || fs[0] == nil {
 		return &flag{fs: flag2.CommandLine}
 	}

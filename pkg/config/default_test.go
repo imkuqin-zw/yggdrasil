@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

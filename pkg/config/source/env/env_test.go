@@ -30,9 +30,9 @@ func TestEnv_Read(t *testing.T) {
 		},
 	}
 
-	os.Setenv("DATABASE_HOST", "localhost")
-	os.Setenv("DATABASE_PASSWORD", "password")
-	os.Setenv("DATABASE_DATASOURCE", "user:password@tcp(localhost:port)/db?charset=utf8mb4&parseTime=True&loc=Local")
+	_ = os.Setenv("DATABASE_HOST", "localhost")
+	_ = os.Setenv("DATABASE_PASSWORD", "password")
+	_ = os.Setenv("DATABASE_DATASOURCE", "user:password@tcp(localhost:port)/db?charset=utf8mb4&parseTime=True&loc=Local")
 
 	source := NewSource(nil, nil)
 	c, err := source.Read()
@@ -108,7 +108,7 @@ func TestEnvvar_WatchNextNoOpsUntilStop(t *testing.T) {
 	}()
 
 	if w != nil || err != nil {
-		t.Errorf("expected watcher stopped error, got %v", err)
+		t.Errorf("expected watcher stopped reason, got %v", err)
 	}
 }
 

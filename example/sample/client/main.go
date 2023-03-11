@@ -19,22 +19,21 @@ import (
 
 	"github.com/imkuqin-zw/yggdrasil"
 	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
-	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword/grpc"
-	"github.com/imkuqin-zw/yggdrasil/pkg/client/grpc"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
-	"github.com/imkuqin-zw/yggdrasil/pkg/log"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 )
 
 func main() {
 	if err := config.LoadSource(file.NewSource("./config.yaml", false)); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
-	_ = yggdrasil.Run("client")
-	client := grpcimpl.NewGreeterClient(grpc.Dial("sample"))
-	res, err := client.SayHello(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
+	client := helloword.NewGreeterClient(yggdrasil.NewClient("github.com.imkuqin_zw.yggdrasil.example.sample"))
+	_, err := client.SayHello(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
-	log.Infof("call success, res: %s", res.Message)
+	logger.Info("call success")
 }

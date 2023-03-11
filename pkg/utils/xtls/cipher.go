@@ -25,12 +25,12 @@ var cipheres = map[string]Cipher{
 
 type DefaultCipher struct{}
 
-//Encrypt is method used for encryption
+// Encrypt is method used for encryption
 func (c *DefaultCipher) Encrypt(src string) (string, error) {
 	return src, nil
 }
 
-//Decrypt is method used for decryption
+// Decrypt is method used for decryption
 func (c *DefaultCipher) Decrypt(src string) (string, error) {
 	return src, nil
 }

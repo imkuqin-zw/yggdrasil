@@ -1,11 +1,15 @@
 {{ if .Versions -}}
-  <a name="unreleased"></a>
-  ## [Unreleased]
+<a name="unreleased"></a>
 
-  {{ if .Unreleased.CommitGroups -}}
-  {{ range .Unreleased.CommitGroups -}}
-  ### {{ .Title }}
-  {{ range .Commits -}}
+## [Unreleased]
+
+{{ if .Unreleased.CommitGroups -}}
+{{ range .Unreleased.CommitGroups -}}
+
+### {{ .Title }}
+
+{{ range .Commits -}}
+
 - {{ if .Scope }}**{{ .Scope }}:** {{ end }}{{ .Subject }}
   {{ end }}
   {{ end -}}

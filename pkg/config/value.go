@@ -17,10 +17,12 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/creasty/defaults"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
 	"github.com/mitchellh/mapstructure"
 )
@@ -29,7 +31,7 @@ type value struct {
 	val interface{}
 }
 
-func newValue(val interface{}) types.ConfigValue {
+func newValue(val interface{}) Value {
 	return &value{val: val}
 }
 
@@ -195,7 +197,7 @@ func (m *value) StringSlice(def ...[]string) []string {
 func (m *value) StringMap(def ...map[string]string) map[string]string {
 	res, ok := m.val.(map[string]string)
 	if ok {
-		return res
+		return xmap.CloneStringMap(res)
 	}
 	if len(def) == 0 {
 		return map[string]string{}
@@ -206,6 +208,7 @@ func (m *value) StringMap(def ...map[string]string) map[string]string {
 func (m *value) Map(def ...map[string]interface{}) map[string]interface{} {
 	res, ok := m.val.(map[string]interface{})
 	if ok {
+		res, _ = xmap.CloneMap(res)
 		return res
 	}
 	if len(def) == 0 {
@@ -215,19 +218,27 @@ func (m *value) Map(def ...map[string]interface{}) map[string]interface{} {
 }
 
 func (m *value) Scan(val interface{}) error {
-	v, ok := m.val.(map[string]interface{})
-	if !ok {
+	switch m.val.(type) {
+	case map[string]interface{}:
+	case []interface{}:
+	default:
 		return nil
 	}
-	config := mapstructure.DecoderConfig{
+	c := mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 		Result:     val,
 	}
-	decoder, err := mapstructure.NewDecoder(&config)
+	decoder, err := mapstructure.NewDecoder(&c)
 	if err != nil {
 		return err
 	}
-	return decoder.Decode(v)
+	if err := decoder.Decode(m.val); err != nil {
+		return err
+	}
+	if reflect.TypeOf(val).Kind() != reflect.Ptr || reflect.ValueOf(val).Elem().Kind() != reflect.Struct {
+		return nil
+	}
+	return defaults.Set(val)
 }
 
 func (m *value) Bytes(def ...[]byte) []byte {

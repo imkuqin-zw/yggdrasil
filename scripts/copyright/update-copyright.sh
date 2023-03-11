@@ -42,12 +42,13 @@ init() {
   relativePath=$(repeat "${count}" '/..')
   PROTECT_ROOT=$CURRENT_PATH$relativePath
   VENDOR_PATH=$PROTECT_ROOT/third_party
+  REMOTE_PATH=$PROTECT_ROOT/pkg/remote
 }
 
 addCopyrightHeader() {
   echo "add copyright header"
   # shellcheck disable=SC2044
-  for file in $(find "$PROTECT_ROOT" -not -path "$VENDOR_PATH/*" -not -name "zz_generated*" -not -name "escape.go" -not -name "signer.go" -type f -name \*.go); do
+  for file in $(find "$PROTECT_ROOT" -not -path "$VENDOR_PATH/*" -not -path "$REMOTE_PATH/*" -not -name "zz_generated*" -not -name "escape.go" -not -name "*.pb.go" -not -name "signer.go" -type f -name \*.go); do
     if [[ $(grep -n "\/\/ Copyright" -m 1 "$file" | cut -f1 -d:) == 1 ]] || [[ $(grep -n "\/\*" -m 1 "$file" | cut -f1 -d:) == 1 && $(grep -n "Copyright" -m 1 "$file" | cut -f1 -d:) == 2 ]]; then
       # the file already has a copyright.
       continue

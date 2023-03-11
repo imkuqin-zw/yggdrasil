@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xarray"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
@@ -31,7 +30,7 @@ type env struct {
 	strippedPrefixes []string
 }
 
-func (e *env) Read() (types.ConfigSourceData, error) {
+func (e *env) Read() (source.SourceData, error) {
 	var result = make(map[string]interface{})
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
@@ -69,7 +68,7 @@ func (e *env) Read() (types.ConfigSourceData, error) {
 		xmap.MergeStringMap(result, tmp)
 	}
 
-	cs := source.NewMapSourceData(types.ConfigPriorityEnv, result)
+	cs := source.NewMapSourceData(source.PriorityEnv, result)
 	return cs, nil
 }
 
@@ -87,7 +86,7 @@ func (e *env) Changeable() bool {
 	return false
 }
 
-func (e *env) Watch() (<-chan types.ConfigSourceData, error) {
+func (e *env) Watch() (<-chan source.SourceData, error) {
 	return nil, nil
 }
 
@@ -99,7 +98,7 @@ func (e *env) Close() error {
 	return nil
 }
 
-func NewSource(pre, sp []string) types.ConfigSource {
+func NewSource(pre, sp []string) source.Source {
 	for i, item := range pre {
 		pre[i] = strings.ToLower(item)
 	}

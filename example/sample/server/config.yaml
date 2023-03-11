@@ -1,10 +1,17 @@
 yggdrasil:
   server:
-    grpc:
-      host: 127.0.0.1
-      port: 30001
-  tracer: jaeger
+    protocol:
+      - "grpc"
 
-jaeger:
-  endpoint: "http://localhost:14268/api/traces"
-  sampler: 1
+  remote:
+    protocol:
+      grpc:
+        address: "127.0.0.1:55879"
+#    grpc:
+#      host: 127.0.0.1
+#      port: 30001
+#  tracer: jaeger
+
+#jaeger:
+#  endpoint: "http://localhost:14268/api/traces"
+#  sampler: 1

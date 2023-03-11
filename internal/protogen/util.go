@@ -14,7 +14,7 @@
 
 package protogen
 
-// camelCase returns the CamelCased name.
+// CamelCase returns the CamelCased name.
 // If there is an interior underscore followed by a lower case letter,
 // drop the underscore and convert the letter to upper case.
 // There is a remote possibility of this rewrite causing a name collision,

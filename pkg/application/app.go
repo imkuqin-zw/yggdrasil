@@ -16,19 +16,21 @@ package application
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
+	"github.com/imkuqin-zw/yggdrasil/pkg/registry"
+	"github.com/imkuqin-zw/yggdrasil/pkg/server"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/imkuqin-zw/yggdrasil/pkg"
 	"github.com/imkuqin-zw/yggdrasil/pkg/defers"
-	"github.com/imkuqin-zw/yggdrasil/pkg/log"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/errgroup"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 )
 
 type Stage uint32
@@ -47,16 +49,50 @@ const (
 
 var defaultShutdownTimeout = time.Second * 30
 
+const (
+	registryStateInit = iota
+	registryStateDone
+	registryStateCancel
+)
+
+const (
+	ServerKindRpc      = "rpc"
+	ServerKindGovernor = "governor"
+)
+
+type Endpoint struct {
+	address string
+	scheme  string
+	Attr    map[string]string
+}
+
+func (e Endpoint) Scheme() string {
+	return e.scheme
+}
+
+func (e Endpoint) Address() string {
+	return e.address
+}
+
+func (e Endpoint) Metadata() map[string]string {
+	return e.Attr
+}
+
 type Application struct {
 	runOnce  sync.Once
 	stopOnce sync.Once
 
+	mu sync.Mutex
+
 	optsMu  sync.RWMutex
 	running bool
 
-	servers []types.Server
+	server server.Server
 
-	registry types.Registry
+	governor *governor.Server
+
+	registryState int
+	registry      registry.Registry
 
 	shutdownTimeout time.Duration
 
@@ -66,7 +102,6 @@ type Application struct {
 
 func New(inits ...Option) *Application {
 	app := &Application{
-		eg: errgroup.WithCancel(context.Background()),
 		hooks: map[Stage]*defers.Defer{
 			StageBeforeStart: defers.NewDefer(),
 			StageBeforeStop:  defers.NewDefer(),
@@ -78,7 +113,7 @@ func New(inits ...Option) *Application {
 	}
 	for _, o := range inits {
 		if err := o(app); err != nil {
-			log.Fatal("fault to init app option, err: %s", err.Error())
+			logger.Fatal("fault to init app option, err: %s", err.Error())
 		}
 	}
 
@@ -89,12 +124,12 @@ func (app *Application) Init(opts ...Option) {
 	app.optsMu.RLock()
 	defer app.optsMu.RUnlock()
 	if app.running {
-		log.Warn("the application has been started, and the settings are no longer applied")
+		logger.Warn("the application has been started, and the settings are no longer applied")
 		return
 	}
 	for _, o := range opts {
 		if err := o(app); err != nil {
-			log.Fatal("fault to init application, err: %s", err.Error())
+			logger.Fatal("fault to init application, err: %s", err.Error())
 		}
 	}
 
@@ -108,12 +143,12 @@ func (app *Application) Stop() error {
 			app.runHooks(StageAfterStop)
 			defers.Done()
 		}()
+		app.deregister()
 		err = app.stopServers()
 	})
 	if err != nil {
 		return err
 	}
-	log.Info("application stopped")
 	return nil
 }
 
@@ -127,7 +162,7 @@ func (app *Application) Run() error {
 		if err = app.startServers(context.Background()); err != nil {
 			return
 		}
-		log.Info("app shutdown")
+		logger.Info("app shutdown")
 	})
 
 	return err
@@ -140,54 +175,70 @@ func (app *Application) runHooks(k Stage) {
 	}
 }
 
+func (app *Application) register() {
+	if app.registry == nil {
+		return
+	}
+	app.mu.Lock()
+	if app.registryState != registryStateInit {
+		app.mu.Unlock()
+		return
+	}
+	app.registryState = registryStateDone
+	app.mu.Unlock()
+	if err := app.registry.Register(context.TODO(), app); err != nil {
+		logger.ErrorFiled("fault to register application", logger.Err(err))
+	}
+}
+
+func (app *Application) deregister() {
+	if app.registry == nil {
+		return
+	}
+	app.mu.Lock()
+	if app.registryState != registryStateDone {
+		app.mu.Unlock()
+		return
+	}
+	app.registryState = registryStateCancel
+	app.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.TODO(), defaultShutdownTimeout)
+	defer cancel()
+	if err := app.registry.Deregister(ctx, app); err != nil {
+		logger.ErrorFiled("fault to deregister application", logger.Err(err))
+	}
+}
+
 func (app *Application) startServers(ctx context.Context) error {
 	app.runHooks(StageBeforeStart)
-	eg := errgroup.WithContext(ctx)
-	var governorMeta []string
-	for _, s := range app.servers {
-		if s.Info().Kind() != types.ServerKindGovernor {
-			continue
-		}
-		governorMeta = append(governorMeta, s.Info().Endpoint())
-	}
-	if len(governorMeta) > 0 {
-		data, _ := json.Marshal(governorMeta)
-		pkg.AddMetadata("governor", xstrings.Bytes2str(data))
-	}
-	for _, s := range app.servers {
-		s := s
-		eg.Go(func(ctx context.Context) (err error) {
-			info := s.Info()
-			log.InfoFiled("server start",
-				log.String("kind", string(info.Kind())),
-				log.String("endpoint", info.Endpoint()),
-			)
-			err = s.Serve()
-			return
-		})
-	}
-	if app.registry != nil {
-		if err := app.registry.Register(ctx, app); err != nil {
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		cancelCh, stoppedCh, err := app.server.Serve()
+		if err != nil {
 			return err
 		}
-		defer func() {
-			if err := app.registry.Deregister(ctx, app); err != nil {
-				log.Errorf("fault to deregister, err: %+v", err)
-			}
+		go func() {
+			<-cancelCh
+			_ = app.Stop()
 		}()
-	}
+		err, _ = <-stoppedCh
+		return err
+	})
+	eg.Go(func() error {
+		return app.governor.Serve()
+	})
+	app.register()
 	return eg.Wait()
 }
 
 func (app *Application) stopServers() error {
-	eg := &errgroup.Group{}
-	for _, s := range app.servers {
-		s := s
-		eg.Go(func(ctx context.Context) (err error) {
-			err = s.Stop()
-			return
-		})
-	}
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		return app.governor.Stop()
+	})
+	eg.Go(func() error {
+		return app.server.Stop()
+	})
 	return eg.Wait()
 }
 
@@ -219,13 +270,25 @@ func (app *Application) Metadata() map[string]string {
 	return pkg.Metadata()
 }
 
-func (app *Application) Endpoints() []types.ServerInfo {
-	endpoints := make([]types.ServerInfo, 0)
-	for _, svr := range app.servers {
-		if svr.Info().Kind() == types.ServerKindRpc || svr.Info().Kind() == types.ServerKindGovernor {
-			endpoints = append(endpoints, svr.Info())
-		}
+func (app *Application) Endpoints() []registry.Endpoint {
+	endpoints := make([]registry.Endpoint, 0)
+	for _, item := range app.server.Endpoints() {
+		attr := xmap.CloneStringMap(item.Metadata())
+		attr["serverKind"] = ServerKindRpc
+		endpoints = append(endpoints, Endpoint{
+			address: item.Address(),
+			scheme:  item.Scheme(),
+			Attr:    attr,
+		})
 	}
+	governorInfo := app.governor.Info()
+	attr := xmap.CloneStringMap(governorInfo.Attr)
+	attr["serverKind"] = ServerKindGovernor
+	endpoints = append(endpoints, Endpoint{
+		address: governorInfo.Address,
+		scheme:  governorInfo.Scheme,
+		Attr:    attr,
+	})
 	return endpoints
 }
 
@@ -247,7 +310,7 @@ func (app *Application) waitSignals() {
 		}()
 		go func() {
 			if err := app.Stop(); err != nil {
-				log.Errorf("fault to stop, err: %s", err.Error())
+				logger.Errorf("fault to stop, err: %s", err.Error())
 				return
 			}
 		}()

@@ -15,15 +15,21 @@
 package genrpc
 
 import (
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 const (
-	contextPackage = protogen.GoImportPath("context")
-	typesPackage   = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/types")
-	errorsPackage  = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/errors")
-	codePackage    = protogen.GoImportPath("google.golang.org/genproto/googleapis/rpc/code")
+	contextPackage     = protogen.GoImportPath("context")
+	typesPackage       = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/types")
+	statusPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/status")
+	streamPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/stream")
+	clientPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/client")
+	interceptorPackage = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/interceptor")
+	serverPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/server")
+	metadataPackage    = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/metadata")
+	codePackage        = protogen.GoImportPath("google.golang.org/genproto/googleapis/rpc/code")
 )
 
 var methodSets = make(map[string]int)
@@ -32,22 +38,14 @@ func GenerateFiles(gen *protogen.Plugin, file *protogen.File) {
 	if len(file.Services) == 0 {
 		return
 	}
-	generateClientFile(gen, file)
-	generateServerFile(gen, file)
+	generateRpcFile(gen, file)
 }
 
-func generateClientFile(gen *protogen.Plugin, file *protogen.File) {
-	filename := file.GeneratedFilenamePrefix + "_client.pb.go"
+func generateRpcFile(gen *protogen.Plugin, file *protogen.File) {
+	filename := file.GeneratedFilenamePrefix + "_rpc.pb.go"
 	g := gen.NewGeneratedFile(filename, file.GoImportPath)
 	generateHeader(g, file)
 	generateFileContent(gen, file, g, false)
-}
-
-func generateServerFile(gen *protogen.Plugin, file *protogen.File) {
-	filename := file.GeneratedFilenamePrefix + "_server.pb.go"
-	g := gen.NewGeneratedFile(filename, file.GoImportPath)
-	generateHeader(g, file)
-	generateFileContent(gen, file, g, true)
 }
 
 func generateHeader(g *protogen.GeneratedFile, file *protogen.File) {
@@ -66,22 +64,31 @@ func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.
 
 	for _, service := range file.Services {
 		if len(service.Methods) > 0 {
-			genService(g, service, isServer)
+			genService(g, service, file)
 		}
 
 	}
 }
 
-func genService(g *protogen.GeneratedFile, service *protogen.Service, isServer bool) {
+func genService(g *protogen.GeneratedFile, service *protogen.Service, file *protogen.File) {
 	if service.Desc.Options().(*descriptorpb.ServiceOptions).GetDeprecated() {
 		g.P("//")
 		g.P(deprecationComment)
 	}
 
 	sd := &serviceDesc{
-		ServiceType: service.GoName,
-		ServiceName: string(service.Desc.FullName()),
-		Context:     g.QualifiedGoIdent(contextPackage.Ident("Context")),
+		Filename:              file.GeneratedFilenamePrefix + ".proto",
+		ServiceType:           service.GoName,
+		ServiceName:           string(service.Desc.FullName()),
+		FullServerName:        string(service.Desc.FullName()),
+		LowerFirstServiceType: xstrings.StrToLowerFirstCamelCase(service.GoName),
+		Context:               g.QualifiedGoIdent(contextPackage.Ident("Context")),
+		Code:                  g.QualifiedGoIdent(codePackage.Ident("")),
+		Status:                g.QualifiedGoIdent(statusPackage.Ident("")),
+		Client:                g.QualifiedGoIdent(clientPackage.Ident("")),
+		Server:                g.QualifiedGoIdent(serverPackage.Ident("")),
+		Interceptor:           g.QualifiedGoIdent(interceptorPackage.Ident("")),
+		Md:                    g.QualifiedGoIdent(metadataPackage.Ident("")),
 	}
 	needType := false
 	for _, method := range service.Methods {
@@ -98,18 +105,10 @@ func genService(g *protogen.GeneratedFile, service *protogen.Service, isServer b
 		sd.Methods = append(sd.Methods, tmp)
 	}
 	if needType {
-		sd.Types = g.QualifiedGoIdent(typesPackage.Ident(""))
-	}
-	if isServer {
-		sd.Errors = g.QualifiedGoIdent(errorsPackage.Ident(""))
-		sd.Code = g.QualifiedGoIdent(codePackage.Ident(""))
+		sd.Stream = g.QualifiedGoIdent(streamPackage.Ident(""))
 	}
 	if len(sd.Methods) != 0 {
-		if isServer {
-			g.P(sd.execute(serverTpl))
-		} else {
-			g.P(sd.execute(clientTpl))
-		}
+		g.P(sd.execute(tpl))
 	}
 }
 

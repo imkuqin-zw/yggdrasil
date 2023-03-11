@@ -17,8 +17,11 @@ package yggdrasil
 import (
 	"time"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
+	"github.com/imkuqin-zw/yggdrasil/pkg/registry"
+	"github.com/imkuqin-zw/yggdrasil/pkg/server"
+
 	"github.com/imkuqin-zw/yggdrasil/pkg/application"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 )
 
 type Stage application.Stage
@@ -34,8 +37,9 @@ const (
 )
 
 type options struct {
-	servers         []types.Server
-	registry        types.Registry
+	server          server.Server
+	governor        *governor.Server
+	registry        registry.Registry
 	shutdownTimeout time.Duration
 	startBeforeHook []func() error
 	stopBeforeHook  []func() error
@@ -44,7 +48,8 @@ type options struct {
 
 func (opts *options) getAppOpts() []application.Option {
 	return []application.Option{
-		application.WithServers(opts.servers...),
+		application.WithServer(opts.server),
+		application.WithGovernor(opts.governor),
 		application.WithRegistry(opts.registry),
 		application.WithShutdownTimeout(opts.shutdownTimeout),
 		application.WithBeforeStartHook(opts.startBeforeHook...),
@@ -76,16 +81,23 @@ func WithAfterStopHook(fns ...func() error) Option {
 	}
 }
 
-func WithRegistry(registry types.Registry) Option {
+func WithRegistry(registry registry.Registry) Option {
 	return func(Options *options) error {
 		Options.registry = registry
 		return nil
 	}
 }
 
-func WithServers(servers ...types.Server) Option {
+func WithGovernor(svr *governor.Server) Option {
 	return func(Options *options) error {
-		Options.servers = append(Options.servers, servers...)
+		Options.governor = svr
+		return nil
+	}
+}
+
+func WithServer(svr server.Server) Option {
+	return func(Options *options) error {
+		Options.server = svr
 		return nil
 	}
 }

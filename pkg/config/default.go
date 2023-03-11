@@ -17,11 +17,14 @@ package config
 import (
 	"time"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/config/source"
+
 	"github.com/imkuqin-zw/yggdrasil/pkg/defers"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 )
 
-var cfg = NewConfig(".")
+const keyDelimiter = "."
+
+var cfg = NewConfig(keyDelimiter)
 
 func init() {
 	defers.Register(func() error {
@@ -29,12 +32,24 @@ func init() {
 	})
 }
 
-func Get(key string) types.ConfigValue {
+func Get(key string) Value {
 	return cfg.Get(key)
+}
+
+func GetMulti(keys ...string) Value {
+	return cfg.GetMulti(keys...)
+}
+
+func ValueToValues(v Value) Values {
+	return cfg.ValueToValues(v)
 }
 
 func Set(key string, val interface{}) error {
 	return cfg.Set(key, val)
+}
+
+func SetMulti(keys []string, values []interface{}) error {
+	return cfg.SetMulti(keys, values)
 }
 
 func Bytes() []byte {
@@ -85,14 +100,14 @@ func Scan(key string, val interface{}) error {
 	return cfg.Get(key).Scan(val)
 }
 
-func LoadSource(sources ...types.ConfigSource) error {
+func LoadSource(sources ...source.Source) error {
 	return cfg.LoadSource(sources...)
 }
 
-func AddWatcher(key string, f func(types.ConfigWatchEvent)) error {
+func AddWatcher(key string, f func(WatchEvent)) error {
 	return cfg.AddWatcher(key, f)
 }
 
-func DelWatcher(key string, f func(types.ConfigWatchEvent)) error {
+func DelWatcher(key string, f func(WatchEvent)) error {
 	return cfg.DelWatcher(key, f)
 }

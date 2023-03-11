@@ -15,32 +15,51 @@
 package yggdrasil
 
 import (
+	"context"
+	"errors"
+	"sync/atomic"
+
 	"github.com/imkuqin-zw/yggdrasil/pkg"
 	"github.com/imkuqin-zw/yggdrasil/pkg/application"
+	"github.com/imkuqin-zw/yggdrasil/pkg/client"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
-	"github.com/imkuqin-zw/yggdrasil/pkg/log"
+	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/registry"
 	"github.com/imkuqin-zw/yggdrasil/pkg/server"
-	"github.com/imkuqin-zw/yggdrasil/pkg/trace"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
-	"github.com/pkg/errors"
+	"github.com/imkuqin-zw/yggdrasil/pkg/tracer"
 	"go.opentelemetry.io/otel"
-	"go.uber.org/atomic"
 )
 
-var app = application.New()
-var initialized atomic.Bool
+var (
+	app         = application.New()
+	initialized atomic.Bool
+)
+
+func NewServer() server.Server {
+	return server.GetServer()
+}
+
+func NewClient(name string) client.Client {
+	cli, err := client.NewClient(context.Background(), name)
+	if err != nil {
+		logger.FatalFiled("fault to new client", logger.String("name", name), logger.Err(err))
+	}
+	return cli
+}
 
 func Init(appName string, ops ...Option) error {
+	if !initialized.CompareAndSwap(false, true) {
+		return errors.New("yggdrasil had already init")
+	}
 	opts := &options{}
 	initLogger()
 	initInstanceInfo(appName)
 	applyOpt(opts, ops...)
-	initServer(opts)
 	initRegistry(opts)
 	initTracer()
+	initGovernor(opts)
 	app.Init(opts.getAppOpts()...)
-	initialized.Store(true)
 	return nil
 }
 
@@ -52,106 +71,91 @@ func Start() error {
 }
 
 func Run(appName string, ops ...Option) error {
-	opts := &options{}
-	initLogger()
-	initInstanceInfo(appName)
-	applyOpt(opts, ops...)
-	initServer(opts)
-	initRegistry(opts)
-	initTracer()
-	app.Init(opts.getAppOpts()...)
-	initialized.Store(true)
+	if err := Init(appName, ops...); err != nil {
+		return err
+	}
 	return app.Run()
 }
 
 func Stop() error {
 	if err := app.Stop(); err != nil {
-		log.ErrorFiled("fault to stop yggdrasil application", log.Err(err))
+		logger.ErrorFiled("fault to stop yggdrasil application", logger.Err(err))
 		return err
 	}
 	return nil
 }
 
-func initServer(opts *options) {
-	servers := make([]types.Server, 0)
-	for _, f := range server.GetConstructors() {
-		servers = append(servers, f())
-	}
-	if len(servers) > 0 {
-		_ = WithServers(servers...)(opts)
-	}
-}
-
 func initRegistry(opts *options) {
-	registerName := config.GetString("yggdrasil.register")
-	if len(registerName) == 0 {
+	name := config.GetString(config.KeyRegistry)
+	if len(name) == 0 {
 		return
 	}
-	f := registry.GetConstructor(registerName)
+	f := registry.GetBuilder(name)
 	if f == nil {
-		log.WarnFiled("not found registry", log.String("name", registerName))
+		logger.WarnFiled("not found registry", logger.String("name", name))
 		return
 	}
 	_ = WithRegistry(f())(opts)
 }
 
 func initTracer() {
-	if tracerName := config.GetString("yggdrasil.tracer"); len(tracerName) > 0 {
-		constructor := trace.GetConstructor(tracerName)
+	if tracerName := config.GetString(config.KeyTracer); len(tracerName) > 0 {
+		constructor := tracer.GetTracerProviderBuilder(tracerName)
 		if constructor != nil {
 			otel.SetTracerProvider(constructor(pkg.Name()))
 		} else {
-			log.WarnFiled("not found tracer provider", log.String("name", tracerName))
+			logger.ErrorFiled("not found tracer provider", logger.String("name", tracerName))
 		}
 	}
 }
 
 func initInstanceInfo(appName string) {
-	if err := config.Set("yggdrasil.application.name", appName); err != nil {
-		log.FatalFiled("fault to set application name", log.Err(err))
+	if err := config.Set(config.KeyAppName, appName); err != nil {
+		logger.FatalFiled("fault to set application name", logger.Err(err))
 	}
 	pkg.InitInstanceInfo()
 }
 
 func initLogger() {
-	logName := config.GetString("yggdrasil.logger.name", "std")
+	logName := config.GetString(config.KeyLoggerName, "std")
 	if logName == "std" {
-		lv := config.GetBytes("yggdrasil.logger.level", []byte("debug"))
-		var level types.Level
+		lv := config.GetBytes(config.KeyLoggerLevel, []byte("debug"))
+		var level logger.Level
 		if err := level.UnmarshalText(lv); err != nil {
-			log.FatalFiled("fault to unmarshal std logger level", log.Err(err))
+			logger.FatalFiled("fault to unmarshal std logger level", logger.Err(err))
 		}
-		log.SetLevel(level)
+		logger.SetLevel(level)
 		if config.GetBool("stdLogger.openMsgFormat", false) {
-			if lg, ok := log.GetRaw().(*log.StdLogger); ok {
+			if lg, ok := logger.RawLogger().(*logger.StdLogger); ok {
 				lg.OpenMsgFormat()
 			}
 		}
 	} else {
-		lg := log.GetLogger(logName)
-		log.SetLogger(lg)
+		lg := logger.GetLogger(logName)
+		logger.SetLogger(lg)
 	}
-	timeEncoder := config.GetString("yggdrasil.logger.timeEncoder", "RFC3339")
-	if err := log.SetTimeEncoderByName(timeEncoder); err != nil {
-		log.FatalFiled("fault to set log time encoder", log.Err(err))
+	timeEncoder := config.GetString(config.KeyLoggerTimeEnc, "RFC3339")
+	if err := logger.SetTimeEncoderByName(timeEncoder); err != nil {
+		logger.FatalFiled("fault to set logger time encoder", logger.Err(err))
 		return
 	}
-	durationEncoder := config.GetString("yggdrasil.logger.durationEncoder", "millis")
-	if err := log.SetDurationEncoderByName(durationEncoder); err != nil {
-		log.FatalFiled("fault to set log duration encoder", log.Err(err))
+	durationEncoder := config.GetString(config.KeyLoggerDurEnc, "millis")
+	if err := logger.SetDurationEncoderByName(durationEncoder); err != nil {
+		logger.FatalFiled("fault to set logger duration encoder", logger.Err(err))
 		return
 	}
-	log.SetStackPrintState(config.GetBool("yggdrasil.logger.enablePrintStack", false))
+	logger.SetStackPrintState(config.GetBool(config.KeyLoggerStack, false))
+}
+
+func initGovernor(opts *options) {
+	svr := governor.NewServer()
+	_ = WithGovernor(svr)(opts)
 }
 
 func applyOpt(opts *options, ops ...Option) {
 	for _, f := range ops {
 		if err := f(opts); err != nil {
-			log.FatalFiled("fault to apply options", log.Err(err))
+			logger.FatalFiled("fault to apply options", logger.Err(err))
 		}
 	}
-}
-
-func Endpoints() []types.ServerInfo {
-	return app.Endpoints()
 }

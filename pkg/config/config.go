@@ -16,54 +16,84 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/log"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/imkuqin-zw/yggdrasil/pkg/config/source"
+
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xarray"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xstrings"
-	"go.uber.org/atomic"
 )
+
+type versionValues struct {
+	values  Values
+	version uint64
+}
 
 type config struct {
 	keyDelimiter string
 
 	sourceDataMu sync.RWMutex
-	sourceData   [types.ConfigPriorityMax]map[string]interface{}
+	sourceData   [source.PriorityMax]map[string]interface{}
 
 	cacheMu sync.Mutex
 	kvs     map[string]interface{}
+	version uint64
 	vs      atomic.Value
 
 	watcherMu sync.RWMutex
-	watchers  map[string][]func(event types.ConfigWatchEvent)
+	watchers  map[string][]func(event WatchEvent)
 }
 
 func (c *config) Map() map[string]interface{} {
-	return c.vs.Load().(types.ConfigValues).Map()
+	return c.vs.Load().(versionValues).values.Map()
 }
 
 func (c *config) Scan(v interface{}) error {
-	return c.vs.Load().(types.ConfigValues).Scan(v)
+	return c.vs.Load().(versionValues).values.Scan(v)
 }
 
 func (c *config) Close() error {
-
 	return nil
 }
 
-func (c *config) Get(key string) types.ConfigValue {
-	return c.vs.Load().(types.ConfigValues).Get(key)
+func (c *config) Get(key string) Value {
+	return c.vs.Load().(versionValues).values.Get(key)
+}
+
+func (c *config) GetMulti(keys ...string) Value {
+	return c.vs.Load().(versionValues).values.GetMulti(keys...)
+}
+
+func (c *config) ValueToValues(v Value) Values {
+	return newValues(keyDelimiter, v.Map())
 }
 
 func (c *config) Set(key string, val interface{}) error {
 	c.sourceDataMu.Lock()
-	xmap.MergeStringMap(c.sourceData[types.ConfigPriorityMemory], c.buildSetMap(key, val))
+	xmap.MergeStringMap(c.sourceData[source.PriorityMemory], c.buildSetMap(key, val))
+	c.sourceDataMu.Unlock()
+	if err := c.apply(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *config) SetMulti(keys []string, values []interface{}) error {
+	if len(keys) != len(values) {
+		return errors.New("the quantity of key and value does not match")
+	}
+	c.sourceDataMu.Lock()
+	for i := 0; i < len(keys); i++ {
+		xmap.MergeStringMap(c.sourceData[source.PriorityMemory], c.buildSetMap(keys[i], values[i]))
+	}
 	c.sourceDataMu.Unlock()
 	if err := c.apply(); err != nil {
 		return err
@@ -87,12 +117,12 @@ func (c *config) buildSetMap(key string, val interface{}) map[string]interface{}
 
 func (c *config) Del(key string) error {
 	c.sourceDataMu.Lock()
-	val := &values{val: c.sourceData[types.ConfigPriorityMemory]}
+	val := &values{val: c.sourceData[source.PriorityMemory]}
 	if err := val.Del(key); err != nil {
 		c.sourceDataMu.Unlock()
 		return err
 	}
-	c.sourceData[types.ConfigPriorityMemory] = val.Map()
+	c.sourceData[source.PriorityMemory] = val.Map()
 	c.sourceDataMu.Unlock()
 	if err := c.apply(); err != nil {
 		return err
@@ -101,24 +131,33 @@ func (c *config) Del(key string) error {
 }
 
 func (c *config) Bytes() []byte {
-	return c.vs.Load().(types.ConfigValues).Bytes()
+	return c.vs.Load().(versionValues).values.Bytes()
 }
 
-func (c *config) AddWatcher(key string, watcher func(types.ConfigWatchEvent)) error {
+func (c *config) addWatcher(key string, watcher func(WatchEvent)) {
 	c.watcherMu.Lock()
 	defer c.watcherMu.Unlock()
 	c.watchers[key] = append(c.watchers[key], watcher)
+}
+
+func (c *config) AddWatcher(key string, watcher func(WatchEvent)) error {
+	c.addWatcher(key, watcher)
+	vs := c.vs.Load().(versionValues)
+	v := vs.values.Get(key)
+	xgo.Go(func() {
+		watcher(newConfigWatchEvent(WatchEventUpd, vs.version, v))
+	}, nil)
 	return nil
 }
 
-func (c *config) DelWatcher(key string, watcher func(types.ConfigWatchEvent)) error {
+func (c *config) DelWatcher(key string, watcher func(WatchEvent)) error {
 	c.watcherMu.Lock()
 	defer c.watcherMu.Unlock()
 	delete(c.watchers, key)
 	return nil
 }
 
-func (c *config) LoadSource(sources ...types.ConfigSource) error {
+func (c *config) LoadSource(sources ...source.Source) error {
 	if err := c.loadSource(sources...); err != nil {
 		return err
 	}
@@ -128,10 +167,10 @@ func (c *config) LoadSource(sources ...types.ConfigSource) error {
 	return nil
 }
 
-func (c *config) watchSource(source types.ConfigSource) {
+func (c *config) watchSource(source source.Source) {
 	changeCh, err := source.Watch()
 	if err != nil {
-		log.Errorf("fault to watch config source, err: %+v", err)
+		logger.Errorf("fault to watch config source, err: %+v", err)
 		return
 	}
 	for {
@@ -141,14 +180,14 @@ func (c *config) watchSource(source types.ConfigSource) {
 				return
 			}
 			if err := c.loadSourceData(change); err != nil {
-				log.Errorf("fault to load source data, err: %+v", err)
+				logger.Errorf("fault to load source data, err: %+v", err)
 			}
 		}
 	}
 
 }
 
-func (c *config) loadSourceData(sourceData types.ConfigSourceData) error {
+func (c *config) loadSourceData(sourceData source.SourceData) error {
 	v := make(map[string]interface{})
 	if err := sourceData.Unmarshal(&v); err != nil {
 		return err
@@ -158,7 +197,7 @@ func (c *config) loadSourceData(sourceData types.ConfigSourceData) error {
 	return nil
 }
 
-func (c *config) loadSource(sources ...types.ConfigSource) error {
+func (c *config) loadSource(sources ...source.Source) error {
 	c.sourceDataMu.Lock()
 	defer c.sourceDataMu.Unlock()
 	for _, item := range sources {
@@ -182,26 +221,31 @@ func (c *config) apply() error {
 	xmap.MergeStringMap(override, c.sourceData[:]...)
 	c.sourceDataMu.RUnlock()
 	c.cacheMu.Lock()
-	var changes = make(map[string]types.WatchEventType)
+	var (
+		version uint64
+		changes = make(map[string]WatchEventType)
+	)
 	kvs := c.traverse(override, c.keyDelimiter)
 	for k, v := range kvs {
 		orig, ok := c.kvs[k]
 		if !ok {
-			changes[k] = types.WatchEventAdd
+			changes[k] = WatchEventAdd
 		} else if !reflect.DeepEqual(orig, v) {
-			changes[k] = types.WatchEventDel
+			changes[k] = WatchEventDel
 		}
 	}
 	for k := range c.kvs {
 		if _, ok := kvs[k]; !ok {
-			changes[k] = types.WatchEventDel
+			changes[k] = WatchEventDel
 		}
 	}
 	c.kvs = kvs
-	c.vs.Store(newValues(c.keyDelimiter, override))
+	c.version++
+	version = c.version
+	c.vs.Store(versionValues{version: version, values: newValues(c.keyDelimiter, override)})
 	c.cacheMu.Unlock()
 	if len(changes) > 0 {
-		c.notify(changes, &values{keyDelimiter: c.keyDelimiter, val: override})
+		c.notify(changes, version, &values{keyDelimiter: c.keyDelimiter, val: override})
 	}
 	return nil
 }
@@ -226,10 +270,10 @@ func (c *config) traverse(override map[string]interface{}, sep string) map[strin
 	return data
 }
 
-func (c *config) notify(changes map[string]types.WatchEventType, val types.ConfigValues) {
+func (c *config) notify(changes map[string]WatchEventType, version uint64, val Values) {
 	c.watcherMu.RLock()
 	defer c.watcherMu.RUnlock()
-	var changedWatchPrefixMap = map[string]types.WatchEventType{}
+	var changedWatchPrefixMap = map[string]WatchEventType{}
 	for watchPrefix := range c.watchers {
 		for key, et := range changes {
 			// 前缀匹配
@@ -243,7 +287,7 @@ func (c *config) notify(changes map[string]types.WatchEventType, val types.Confi
 		v := val.Get(changedWatchPrefix)
 		for _, handle := range c.watchers[changedWatchPrefix] {
 			xgo.Go(func() {
-				handle(newConfigWatchEvent(et, v))
+				handle(newConfigWatchEvent(et, version, v))
 			}, nil)
 		}
 	}
@@ -254,27 +298,35 @@ func (c *config) hasPrefix(key, watchPrefix string) bool {
 }
 
 type watchEvent struct {
-	cate  types.WatchEventType
-	value types.ConfigValue
+	cate    WatchEventType
+	value   Value
+	version uint64
 }
 
-func (e *watchEvent) Type() types.WatchEventType {
+func (e *watchEvent) Type() WatchEventType {
 	return e.cate
 }
 
-func (e *watchEvent) Value() types.ConfigValue {
+func (e *watchEvent) Value() Value {
 	return e.value
 }
 
-func newConfigWatchEvent(cate types.WatchEventType, val types.ConfigValue) types.ConfigWatchEvent {
-	return &watchEvent{cate: cate, value: val}
+func (e *watchEvent) Version() uint64 {
+	return e.version
 }
 
-func NewConfig(keyDelimiter string) types.Config {
-	cfg := &config{keyDelimiter: keyDelimiter}
-	cfg.vs.Store(&values{keyDelimiter: keyDelimiter})
-	for i := range cfg.sourceData {
-		cfg.sourceData[i] = map[string]interface{}{}
+func newConfigWatchEvent(cate WatchEventType, version uint64, val Value) WatchEvent {
+	return &watchEvent{cate: cate, version: version, value: val}
+}
+
+func NewConfig(keyDelimiter string) Config {
+	c := &config{
+		keyDelimiter: keyDelimiter,
+		watchers:     map[string][]func(event WatchEvent){},
 	}
-	return cfg
+	c.vs.Store(versionValues{version: c.version, values: newValues(keyDelimiter, nil)})
+	for i := range c.sourceData {
+		c.sourceData[i] = map[string]interface{}{}
+	}
+	return c
 }

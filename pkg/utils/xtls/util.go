@@ -23,13 +23,13 @@ import (
 	"strings"
 )
 
-//TLSCipherSuiteMap is a map with key of type string and value of type unsigned integer
+// TLSCipherSuiteMap is a map with key of type string and value of type unsigned integer
 var tlsCipherSuiteMap = map[string]uint16{
 	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256": tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
 	"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384": tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 }
 
-//TLSVersionMap is a map with key of type string and value of type unsigned integer
+// TLSVersionMap is a map with key of type string and value of type unsigned integer
 var tlsVersionMap = map[string]uint16{
 	"TLSv1.0": tls.VersionTLS10,
 	"TLSv1.1": tls.VersionTLS11,
@@ -136,7 +136,7 @@ func getTLSConfig(sslConfig *SSLConfig, role string) (tlsConfig *tls.Config, err
 	return tlsConfig, nil
 }
 
-//LoadTLSCertificate is a function used to load a certificate
+// LoadTLSCertificate is a function used to load a certificate
 func loadTLSCertificate(certContent, keyContent []byte, passphase string, cipher Cipher) ([]tls.Certificate, error) {
 	keyBlock, _ := pem.Decode(keyContent)
 	if keyBlock == nil {

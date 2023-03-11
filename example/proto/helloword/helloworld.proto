@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package example.proto.helloword;
+package yggdrasil.example.proto.helloword;
 
 option go_package = "github.com/imkuqin-zw/yggdrasil/example/protogen/helloword;helloword";
 

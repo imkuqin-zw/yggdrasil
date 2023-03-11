@@ -16,10 +16,12 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
+	"reflect"
 	"regexp"
 	"strings"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/creasty/defaults"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
 	"github.com/mitchellh/mapstructure"
 )
@@ -63,11 +65,21 @@ func (vs *values) genPath(key string) []string {
 	return paths
 }
 
-func (vs *values) Get(key string) types.ConfigValue {
+func (vs *values) Get(key string) Value {
 	if key == "" {
 		return &value{val: vs.val}
 	}
 	return newValue(vs.get(key))
+}
+
+func (vs *values) GetMulti(keys ...string) Value {
+	result := map[string]interface{}{}
+	for _, key := range keys {
+		if data, ok := vs.get(key).(map[string]interface{}); ok {
+			xmap.MergeStringMap(result, data)
+		}
+	}
+	return newValue(result)
 }
 
 func (vs *values) Del(key string) error {
@@ -98,20 +110,42 @@ func (vs *values) Set(key string, val interface{}) error {
 	return nil
 }
 
+func (vs *values) SetMulti(keys []string, values []interface{}) error {
+	if len(keys) != len(values) {
+		return errors.New("the quantity of key and value does not match")
+	}
+	for i := 0; i < len(keys); i++ {
+		if err := vs.Set(keys[i], values[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (vs *values) Map() map[string]interface{} {
-	return vs.val
+	if vs.val == nil {
+		return nil
+	}
+	val, _ := xmap.CloneMap(vs.val)
+	return val
 }
 
 func (vs *values) Scan(v interface{}) error {
-	config := mapstructure.DecoderConfig{
+	c := mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 		Result:     v,
 	}
-	decoder, err := mapstructure.NewDecoder(&config)
+	decoder, err := mapstructure.NewDecoder(&c)
 	if err != nil {
 		return err
 	}
-	return decoder.Decode(vs.val)
+	if err := decoder.Decode(vs.val); err != nil {
+		return err
+	}
+	if reflect.TypeOf(v).Kind() != reflect.Ptr || reflect.ValueOf(v).Elem().Kind() != reflect.Struct {
+		return nil
+	}
+	return defaults.Set(v)
 }
 
 func (vs *values) Bytes() []byte {
@@ -124,7 +158,6 @@ func (vs *values) Bytes() []byte {
 
 func (vs *values) deepSearchInMap(val map[string]interface{}, key, delimiter string) interface{} {
 	if v, ok := val[key]; ok {
-
 		return v
 	}
 	keys := strings.SplitN(key, delimiter, 2)

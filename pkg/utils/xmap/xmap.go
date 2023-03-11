@@ -21,7 +21,6 @@ import (
 	"reflect"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/pkg/errors"
 )
 
 func Marshal(obj interface{}) map[string]interface{} {
@@ -36,7 +35,7 @@ func Marshal(obj interface{}) map[string]interface{} {
 }
 
 func Unmarshal(in interface{}, out interface{}) error {
-	return errors.WithStack(mapstructure.Decode(in, out))
+	return mapstructure.Decode(in, out)
 }
 
 // MergeStringMap merge two map
@@ -94,6 +93,17 @@ func CoverInterfaceToStringMap(src map[string]interface{}) {
 			CoverInterfaceToStringMap(src[k].(map[string]interface{}))
 		case map[string]interface{}:
 			CoverInterfaceToStringMap(src[k].(map[string]interface{}))
+		case []interface{}:
+			for i, item := range v {
+				switch item := item.(type) {
+				case map[interface{}]interface{}:
+					v[i] = ToMapStringInterface(item)
+					CoverInterfaceToStringMap(v[i].(map[string]interface{}))
+				case map[string]interface{}:
+					CoverInterfaceToStringMap(v[i].(map[string]interface{}))
+				default:
+				}
+			}
 		default:
 		}
 	}
@@ -139,6 +149,14 @@ func CloneMap(src map[string]interface{}) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return copy, nil
+}
+
+func CloneStringMap(src map[string]string) map[string]string {
+	dsc := make(map[string]string, len(src))
+	for k, v := range src {
+		dsc[k] = v
+	}
+	return dsc
 }
 
 func MergeKVMap(dest map[string]string, src ...map[string]string) {

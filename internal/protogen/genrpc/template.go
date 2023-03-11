@@ -21,14 +21,20 @@ import (
 )
 
 type serviceDesc struct {
-	ServiceType string
-	ServiceName string
-	Methods     []*methodDesc
-	Types       string
-	Context     string
-	Status      string
-	Errors      string
-	Code        string
+	Filename              string
+	ServiceType           string
+	ServiceName           string
+	FullServerName        string
+	LowerFirstServiceType string
+	Methods               []*methodDesc
+	Context               string
+	Status                string
+	Code                  string
+	Client                string
+	Server                string
+	Interceptor           string
+	Md                    string
+	Stream                string
 }
 
 type methodDesc struct {

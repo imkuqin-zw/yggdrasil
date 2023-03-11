@@ -19,13 +19,10 @@ import (
 
 	"github.com/imkuqin-zw/yggdrasil"
 	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
-	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword/grpc"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/log"
-	_ "github.com/imkuqin-zw/yggdrasil/pkg/server/governor"
-	"github.com/imkuqin-zw/yggdrasil/pkg/server/grpc"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 )
 
 type GreeterImpl struct {
@@ -50,10 +47,14 @@ func (g GreeterImpl) SayHelloServerStream(request *helloword.HelloRequest, serve
 
 func main() {
 	if err := config.LoadSource(file.NewSource("./config.yaml", false)); err != nil {
-		log.Fatal(err)
+		logger.FatalFiled("fault to load config file", logger.Err(err))
 	}
-	grpc.RegisterService(&grpcimpl.GreeterServiceDesc, GreeterImpl{})
-	if err := yggdrasil.Run("sample"); err != nil {
-		log.Fatal(err)
+	svr := yggdrasil.NewServer()
+	svr.RegisterService(&helloword.GreeterServiceDesc, GreeterImpl{})
+	if err := yggdrasil.Run("github.com.imkuqin_zw.yggdrasil.example.sample",
+		yggdrasil.WithServer(svr),
+	); err != nil {
+		logger.FatalFiled("the application was ended forcefully ", logger.Err(err))
+		logger.Fatal(err)
 	}
 }

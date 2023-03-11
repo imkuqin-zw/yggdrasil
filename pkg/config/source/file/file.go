@@ -16,15 +16,14 @@
 package file
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
+	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source"
-	"github.com/imkuqin-zw/yggdrasil/pkg/log"
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
-	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 )
 
@@ -36,17 +35,17 @@ type file struct {
 	fw            *fsnotify.Watcher
 }
 
-func (f *file) Read() (types.ConfigSourceData, error) {
+func (f *file) Read() (source.SourceData, error) {
 	fh, err := os.Open(f.path)
 	if err != nil {
 		return nil, err
 	}
 	defer fh.Close()
-	b, err := ioutil.ReadAll(fh)
+	b, err := io.ReadAll(fh)
 	if err != nil {
 		return nil, err
 	}
-	cs := source.NewBytesSourceData(types.ConfigPriorityFile, b, yaml.Unmarshal)
+	cs := source.NewBytesSourceData(source.PriorityFile, b, yaml.Unmarshal)
 	return cs, nil
 }
 
@@ -58,14 +57,14 @@ func (f *file) Changeable() bool {
 	return f.enableWatcher
 }
 
-func (f *file) Watch() (<-chan types.ConfigSourceData, error) {
+func (f *file) Watch() (<-chan source.SourceData, error) {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
 	_ = fw.Add(f.path)
 	f.fw = fw
-	change := make(chan types.ConfigSourceData, 1)
+	change := make(chan source.SourceData, 1)
 	xgo.Go(func() {
 		defer func() {
 			close(change)
@@ -73,7 +72,7 @@ func (f *file) Watch() (<-chan types.ConfigSourceData, error) {
 		for {
 			chg, err := f.watch()
 			if err != nil {
-				log.Errorf("fault to watch file, err: %v", err)
+				logger.Errorf("fault to watch file, err: %v", err)
 				continue
 			}
 			if chg == nil {
@@ -85,7 +84,7 @@ func (f *file) Watch() (<-chan types.ConfigSourceData, error) {
 	return change, nil
 }
 
-func (f *file) watch() (types.ConfigSourceData, error) {
+func (f *file) watch() (source.SourceData, error) {
 	select {
 	case <-f.exit:
 		return nil, nil
@@ -116,13 +115,13 @@ func (f *file) watch() (types.ConfigSourceData, error) {
 }
 
 func (f *file) Close() error {
-	if f.stopped.CAS(false, true) {
+	if f.stopped.CompareAndSwap(false, true) {
 		close(f.exit)
 	}
 	return nil
 }
 
-func NewSource(path string, watchable bool) types.ConfigSource {
+func NewSource(path string, watchable bool) source.Source {
 	return &file{
 		path:          path,
 		enableWatcher: watchable,

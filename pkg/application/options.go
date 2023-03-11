@@ -18,7 +18,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
+	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
+	"github.com/imkuqin-zw/yggdrasil/pkg/registry"
+	"github.com/imkuqin-zw/yggdrasil/pkg/server"
 )
 
 type Option func(*Application) error
@@ -46,7 +48,7 @@ func WithAfterStopHook(fns ...func() error) Option {
 	return WithHook(StageAfterStop, fns...)
 }
 
-func WithRegistry(registry types.Registry) Option {
+func WithRegistry(registry registry.Registry) Option {
 	return func(application *Application) error {
 		application.registry = registry
 		return nil
@@ -60,9 +62,16 @@ func WithShutdownTimeout(timeout time.Duration) Option {
 	}
 }
 
-func WithServers(servers ...types.Server) Option {
+func WithServer(server server.Server) Option {
 	return func(application *Application) error {
-		application.servers = append(application.servers, servers...)
+		application.server = server
+		return nil
+	}
+}
+
+func WithGovernor(svr *governor.Server) Option {
+	return func(application *Application) error {
+		application.governor = svr
 		return nil
 	}
 }

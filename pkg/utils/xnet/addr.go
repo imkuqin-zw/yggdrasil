@@ -61,7 +61,7 @@ func Extract(addr string) (string, error) {
 	for _, face := range faces {
 		faceAddrs, err := face.Addrs()
 		if err != nil {
-			// ignore error, interface can dissapear from system
+			// ignore reason, interface can dissapear from system
 			continue
 		}
 		if face.Flags&net.FlagUp == 0 {

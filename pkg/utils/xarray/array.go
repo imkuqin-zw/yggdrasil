@@ -34,3 +34,15 @@ func RemoveReplaceStrings(arr []string) []string {
 	}
 	return arr[:j]
 }
+
+func RemoveEmptyStrings(arr []string) []string {
+	j := 0
+	for _, item := range arr {
+		if item == "" {
+			continue
+		}
+		arr[j] = item
+		j++
+	}
+	return arr[:j]
+}

@@ -14,15 +14,40 @@
 
 package registry
 
-import "github.com/imkuqin-zw/yggdrasil/pkg/types"
+import "context"
 
-var registryConstructors = make(map[string]types.RegistryConstructor)
+type Builder func() Registry
 
-func RegisterConstructor(name string, constructor types.RegistryConstructor) {
-	registryConstructors[name] = constructor
+type Registry interface {
+	Register(context.Context, Instance) error
+	Deregister(context.Context, Instance) error
+	Name() string
 }
 
-func GetConstructor(name string) types.RegistryConstructor {
-	constructor, _ := registryConstructors[name]
+type Endpoint interface {
+	Scheme() string
+	Address() string
+	Metadata() map[string]string
+}
+
+type Instance interface {
+	Region() string
+	Zone() string
+	Campus() string
+	Namespace() string
+	Name() string
+	Version() string
+	Metadata() map[string]string
+	Endpoints() []Endpoint
+}
+
+var builders = make(map[string]Builder)
+
+func RegisterBuilder(name string, constructor Builder) {
+	builders[name] = constructor
+}
+
+func GetBuilder(name string) Builder {
+	constructor, _ := builders[name]
 	return constructor
 }

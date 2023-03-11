@@ -16,23 +16,50 @@ package source
 
 import (
 	"encoding/json"
+	"io"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/types"
 	"github.com/mitchellh/mapstructure"
 )
 
+type Priority uint8
+
+const (
+	PriorityFile Priority = iota
+	PriorityEnv
+	PriorityFlag
+	PriorityCli
+	PriorityRemote
+	PriorityMemory
+	PriorityMax
+)
+
+type SourceData interface {
+	Priority() Priority
+	Data() []byte
+	Unmarshal(v interface{}) error
+}
+
+// Source is the source from which conf is loaded
+type Source interface {
+	Name() string
+	Read() (SourceData, error)
+	Changeable() bool
+	Watch() (<-chan SourceData, error)
+	io.Closer
+}
+
 type bytesSourceData struct {
-	priority  types.ConfigPriority
+	priority  Priority
 	data      []byte
 	unmarshal func([]byte, interface{}) error
 }
 
-func NewBytesSourceData(priority types.ConfigPriority, data []byte,
-	unmarshal func([]byte, interface{}) error) types.ConfigSourceData {
+func NewBytesSourceData(priority Priority, data []byte,
+	unmarshal func([]byte, interface{}) error) SourceData {
 	return &bytesSourceData{priority: priority, data: data, unmarshal: unmarshal}
 }
 
-func (c *bytesSourceData) Priority() types.ConfigPriority {
+func (c *bytesSourceData) Priority() Priority {
 	return c.priority
 }
 
@@ -45,16 +72,16 @@ func (c *bytesSourceData) Unmarshal(v interface{}) error {
 }
 
 type mapSourceData struct {
-	priority  types.ConfigPriority
+	priority  Priority
 	data      map[string]interface{}
 	unmarshal func([]byte, interface{}) error
 }
 
-func NewMapSourceData(priority types.ConfigPriority, data map[string]interface{}) types.ConfigSourceData {
+func NewMapSourceData(priority Priority, data map[string]interface{}) SourceData {
 	return &mapSourceData{priority: priority, data: data}
 }
 
-func (c *mapSourceData) Priority() types.ConfigPriority {
+func (c *mapSourceData) Priority() Priority {
 	return c.priority
 }
 

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package yggdrasil.reason;
+
+option go_package = "github.com/imkuqin-zw/yggdrasil/proto/yggdrasil/reason;reason";
+option java_multiple_files = true;
+option java_outer_classname = "ReasonProto";
+option java_package = "com.github.imkuqin_zw.yggdrasil.reason";
+option objc_class_prefix = "API";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.EnumOptions {
+  int32 default_reason = 1108;
+}
+
+extend google.protobuf.EnumValueOptions {
+  uint32 code = 1109;
+}

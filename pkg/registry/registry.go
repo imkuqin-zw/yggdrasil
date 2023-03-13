@@ -16,6 +16,10 @@ package registry
 
 import "context"
 
+const (
+	MDServerKind = "serverKink"
+)
+
 type Builder func() Registry
 
 type Registry interface {

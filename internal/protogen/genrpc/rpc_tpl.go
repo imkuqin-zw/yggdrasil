@@ -263,7 +263,7 @@ func _{{$svrType}}_{{.Name}}_Handler(srv interface{}, ctx {{$ctx}}, dec func(int
 	}
 	info := &{{$interceptor}}UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "{{$.FullServerName}}",
+		FullMethod: "/{{$.FullServerName}}/{{.Name}}",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.({{$svrType}}Server).{{.Name}}(ctx, req.(*{{.Input}}))

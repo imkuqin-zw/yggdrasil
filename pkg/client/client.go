@@ -32,6 +32,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xarray"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xsync/event"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
@@ -129,6 +130,7 @@ func NewClient(ctx context.Context, serviceName string) (Client, error) {
 		return nil, err
 	}
 	cli.initInterceptor()
+	xgo.Go(cli.watchConfigChange, nil)
 	if err := config.AddWatcher(cfgKey, cli.notifyConfigChange); err != nil {
 		return nil, err
 	}
@@ -136,13 +138,13 @@ func NewClient(ctx context.Context, serviceName string) (Client, error) {
 }
 
 func (c *client) initResolverAndBalancer(cfg config.Values) error {
-	balancerScheme := cfg.Get(config.KeyBalancer).String("round_robin")
-	balancerBuilder, err := balancer.GetBuilder(balancerScheme)
+	balancerName := cfg.Get(config.KeySingleBalancer).String("round_robin")
+	balancerBuilder, err := balancer.GetBuilder(balancerName)
 	if err != nil {
 		return err
 	}
-	c.balancer = balancerBuilder(fmt.Sprintf(config.KeyClientBalancerCfg, c.serviceName, balancerScheme))
-	resolverName := cfg.Get(config.KeyResolver).String()
+	c.balancer = balancerBuilder(c.serviceName)
+	resolverName := cfg.Get(config.KeySingleResolver).String()
 	if resolverName != "" {
 		r, err := resolver.GetResolver(resolverName)
 		if err != nil {
@@ -184,7 +186,7 @@ func (c *client) handleConfig(value config.Value) {
 
 func (c *client) handlePickConfig(cfg config.Values) {
 	endpoints := make([]instance, 0)
-	if err := cfg.Get(config.KeyEndpoints).Scan(&endpoints); err != nil {
+	if err := cfg.Get(config.KeySingleEndpoints).Scan(&endpoints); err != nil {
 		logger.ErrorFiled("fault to load client config", logger.Err(err))
 		return
 	}
@@ -214,13 +216,13 @@ func (c *client) handlePickConfig(cfg config.Values) {
 	}
 
 	b := c.balancer
-	balancerName := cfg.Get(config.KeyBalancer).String("round_robin")
+	balancerName := cfg.Get(config.KeySingleBalancer).String("round_robin")
 	if balancerName != c.balancer.Name() {
 		balancerBuilder, err := balancer.GetBuilder(balancerName)
 		if err != nil {
 			logger.Warn(err.Error())
 		} else {
-			b = balancerBuilder(fmt.Sprintf(config.KeyClientBalancerCfg, c.serviceName, balancerName))
+			b = balancerBuilder(c.serviceName)
 		}
 	}
 	b.Update(cfg)
@@ -231,7 +233,9 @@ func (c *client) handlePickConfig(cfg config.Values) {
 	for _, item := range needDel {
 		_ = item.Close()
 	}
-	c.resolvedEvent.Fire()
+	if len(endpoints) != 0 {
+		c.resolvedEvent.Fire()
+	}
 }
 
 func (c *client) watchConfigChange() {
@@ -241,20 +245,24 @@ func (c *client) watchConfigChange() {
 		case <-c.ctx.Done():
 			return
 		case e, ok := <-c.configChange:
-			if ok {
+			if !ok {
 				return
 			}
 			if e.Version() > version {
 				c.handleConfig(e.Value())
+				version = e.Version()
 			}
 		}
 	}
 }
 
 func (c *client) notifyConfigChange(event config.WatchEvent) {
-	select {
-	case <-c.configChange:
-	default:
+	for {
+		select {
+		case <-c.configChange:
+		default:
+		}
+		break
 	}
 	c.configChange <- event
 }
@@ -292,6 +300,9 @@ func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method 
 					break
 				}
 				cli := snap.remoteCli[r.Endpoint().GetAddress()]
+				if cli == nil {
+					continue
+				}
 				st, err = cli.NewStream(ctx, desc, method)
 				if err == nil {
 					st = &clientStream{
@@ -301,6 +312,10 @@ func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method 
 					}
 					return st, nil
 				}
+				if err == balancer.ErrNoAvailableInstance {
+					return nil, status.New(code.Code_UNAVAILABLE, err)
+				}
+				logger.Errorf("fault to new stream", logger.Err(err))
 				r.Report(err)
 				if retries > 3 {
 					return nil, err
@@ -318,6 +333,7 @@ func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method 
 			}
 			continue
 		}
+		logger.Errorf("fault to pick instance", logger.Err(err))
 		if retries > 3 {
 			return nil, err
 		}

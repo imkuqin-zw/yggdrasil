@@ -17,8 +17,6 @@ package resolver
 import (
 	"fmt"
 	"sync"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 )
 
 type Endpoint interface {
@@ -35,8 +33,8 @@ type Resolver interface {
 }
 
 var (
-	resolver map[string]Resolver
-	builder  map[string]func() (Resolver, error)
+	resolver = map[string]Resolver{}
+	builder  = map[string]func(name string) (Resolver, error){}
 	mu       sync.RWMutex
 )
 
@@ -51,12 +49,11 @@ func GetResolver(name string) (Resolver, error) {
 	if r, ok := resolver[name]; ok {
 		return r, nil
 	}
-	scheme := config.Get(fmt.Sprintf("yggdrasil.resolver.{%s}", name)).String("scheme")
-	f, ok := builder[scheme]
+	f, ok := builder[name]
 	if !ok {
-		return nil, fmt.Errorf("not found resolver builder, scheme: %s", scheme)
+		return nil, fmt.Errorf("not found resolver builder, name: %s", name)
 	}
-	return f()
+	return f(name)
 }
 
 func DelResolver(name string) error {
@@ -69,7 +66,7 @@ func DelResolver(name string) error {
 	return r.Close()
 }
 
-func RegisterBuilder(name string, f func() (Resolver, error)) {
+func RegisterBuilder(name string, f func(string) (Resolver, error)) {
 	mu.Lock()
 	defer mu.Unlock()
 	builder[name] = f

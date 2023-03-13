@@ -23,6 +23,8 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/resolver"
 )
 
+var ErrNoAvailableInstance = fmt.Errorf("no available instance")
+
 type RpcInfo struct {
 	Ctx    context.Context
 	Method string

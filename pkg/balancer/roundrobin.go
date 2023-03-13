@@ -54,7 +54,7 @@ func (p *pickResult) Endpoint() resolver.Endpoint {
 	return p.endpoint
 }
 
-func (p *pickResult) Report(err error) {
+func (p *pickResult) Report(error) {
 	return
 }
 
@@ -92,7 +92,7 @@ func (b *RoundRobin) GetPicker() Picker {
 
 func (b *RoundRobin) Update(values config.Values) {
 	endpoints := make([]*instance, 0)
-	if err := values.Get(config.KeyEndpoints).Scan(&endpoints); err != nil {
+	if err := values.Get(config.KeySingleEndpoints).Scan(&endpoints); err != nil {
 		logger.ErrorFiled("fault to load endpoints config", logger.Err(err))
 		return
 	}

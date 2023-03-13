@@ -163,8 +163,11 @@ func (cc *clientConn) connect(opts transport.ConnectOptions, connectDeadline tim
 			return nil
 		}
 		cc.transport = t
+		connState := cc.state
 		cc.state = connStateConnected
-		close(cc.waitConnCh)
+		if connState == connStateConnecting {
+			close(cc.waitConnCh)
+		}
 		cc.mu.Unlock()
 		return nil
 	case <-connClosed.Done():
@@ -209,8 +212,12 @@ func (cc *clientConn) resetTransport() <-chan struct{} {
 		for {
 			if cc.closeEvent.HasFired() {
 				cc.mu.Lock()
-				close(cc.waitConnCh)
+				if cc.state == connStateConnecting {
+					close(cc.waitConnCh)
+				}
+				cc.state = connStateClosed
 				cc.mu.Unlock()
+				return
 			}
 			backoffFor := cc.bs.Backoff(retries)
 			dialDuration := minConnectTimeout
@@ -227,8 +234,10 @@ func (cc *clientConn) resetTransport() <-chan struct{} {
 			retries++
 			if retries == 3 {
 				cc.mu.Lock()
+				if cc.state == connStateConnecting {
+					close(cc.waitConnCh)
+				}
 				cc.state = connStateClosed
-				close(cc.waitConnCh)
 				cc.mu.Unlock()
 				return
 			}
@@ -245,7 +254,9 @@ func (cc *clientConn) onClose() {
 		select {
 		case _, _ = <-cc.waitConnCh:
 		default:
-			close(cc.waitConnCh)
+			if cc.state == connStateConnecting {
+				close(cc.waitConnCh)
+			}
 		}
 	}
 	cc.state = connStateClosed
@@ -346,11 +357,16 @@ func (cc *clientConn) Close() error {
 		select {
 		case _, _ = <-cc.waitConnCh:
 		default:
-			close(cc.waitConnCh)
+			if cc.state == connStateConnecting {
+				close(cc.waitConnCh)
+			}
+			cc.state = connStateClosed
 		}
 	}
 	cc.mu.Unlock()
-	curTr.GracefulClose()
+	if curTr != nil {
+		curTr.GracefulClose()
+	}
 	return nil
 }
 

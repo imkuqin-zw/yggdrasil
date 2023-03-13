@@ -394,13 +394,12 @@ func (s *server) Stop() error {
 	// new conns will be created.
 	s.serveWG.Wait()
 	s.mu.Lock()
-	conns := s.conns
-	s.conns = nil
-	s.mu.Unlock()
-	for len(conns) != 0 {
+	for len(s.conns) != 0 {
 		s.cv.Wait()
 	}
+	s.conns = nil
 	close(s.stoppedCh)
+	s.mu.Unlock()
 	return nil
 }
 

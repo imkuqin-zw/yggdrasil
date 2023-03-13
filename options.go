@@ -37,6 +37,7 @@ const (
 )
 
 type options struct {
+	serviceDesc     map[*server.ServiceDesc]interface{}
 	server          server.Server
 	governor        *governor.Server
 	registry        registry.Registry
@@ -61,43 +62,52 @@ func (opts *options) getAppOpts() []application.Option {
 type Option func(*options) error
 
 func WithBeforeStartHook(fns ...func() error) Option {
-	return func(app *options) error {
-		app.startBeforeHook = append(app.startBeforeHook, fns...)
+	return func(opts *options) error {
+		opts.startBeforeHook = append(opts.startBeforeHook, fns...)
 		return nil
 	}
 }
 
 func WithBeforeStopHook(fns ...func() error) Option {
-	return func(app *options) error {
-		app.stopBeforeHook = append(app.stopBeforeHook, fns...)
+	return func(opts *options) error {
+		opts.stopBeforeHook = append(opts.stopBeforeHook, fns...)
 		return nil
 	}
 }
 
 func WithAfterStopHook(fns ...func() error) Option {
-	return func(app *options) error {
-		app.stopAfterHook = append(app.stopAfterHook, fns...)
+	return func(opts *options) error {
+		opts.stopAfterHook = append(opts.stopAfterHook, fns...)
 		return nil
 	}
 }
 
 func WithRegistry(registry registry.Registry) Option {
-	return func(Options *options) error {
-		Options.registry = registry
+	return func(opts *options) error {
+		opts.registry = registry
 		return nil
 	}
 }
 
 func WithGovernor(svr *governor.Server) Option {
-	return func(Options *options) error {
-		Options.governor = svr
+	return func(opts *options) error {
+		opts.governor = svr
 		return nil
 	}
 }
 
-func WithServer(svr server.Server) Option {
-	return func(Options *options) error {
-		Options.server = svr
+func WithServiceDescMap(desc map[*server.ServiceDesc]interface{}) Option {
+	return func(opts *options) error {
+		for k, v := range desc {
+			opts.serviceDesc[k] = v
+		}
+		return nil
+	}
+}
+
+func WithServiceDesc(desc *server.ServiceDesc, impl interface{}) Option {
+	return func(opts *options) error {
+		opts.serviceDesc[desc] = impl
 		return nil
 	}
 }

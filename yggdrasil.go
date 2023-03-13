@@ -52,13 +52,14 @@ func Init(appName string, ops ...Option) error {
 	if !initialized.CompareAndSwap(false, true) {
 		return errors.New("yggdrasil had already init")
 	}
-	opts := &options{}
+	opts := &options{serviceDesc: map[*server.ServiceDesc]interface{}{}}
 	initLogger()
 	initInstanceInfo(appName)
 	applyOpt(opts, ops...)
 	initRegistry(opts)
 	initTracer()
 	initGovernor(opts)
+	initServer(opts)
 	app.Init(opts.getAppOpts()...)
 	return nil
 }
@@ -150,6 +151,16 @@ func initLogger() {
 func initGovernor(opts *options) {
 	svr := governor.NewServer()
 	_ = WithGovernor(svr)(opts)
+}
+
+func initServer(opts *options) {
+	if len(opts.serviceDesc) > 0 {
+		svr := server.GetServer()
+		for k, v := range opts.serviceDesc {
+			svr.RegisterService(k, v)
+		}
+		opts.server = svr
+	}
 }
 
 func applyOpt(opts *options, ops ...Option) {

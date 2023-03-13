@@ -90,7 +90,10 @@ func Extract(addr string) (string, error) {
 		default:
 			continue
 		}
-
+		ip = ip.To4()
+		if ip == nil {
+			continue
+		}
 		if !isPrivateIP(ip.String()) {
 			publicIP = ip
 			continue
@@ -110,7 +113,7 @@ func Extract(addr string) (string, error) {
 		return net.IP(publicIP).String(), nil
 	}
 
-	return "", fmt.Errorf("No IP address found, and explicit IP not provided")
+	return "", fmt.Errorf("no IP address found, and explicit IP not provided")
 }
 
 // IPs returns all known ips

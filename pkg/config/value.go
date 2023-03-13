@@ -208,7 +208,7 @@ func (m *value) StringMap(def ...map[string]string) map[string]string {
 func (m *value) Map(def ...map[string]interface{}) map[string]interface{} {
 	res, ok := m.val.(map[string]interface{})
 	if ok {
-		res, _ = xmap.CloneMap(res)
+		res, _ := xmap.CloneMap(res)
 		return res
 	}
 	if len(def) == 0 {
@@ -222,7 +222,10 @@ func (m *value) Scan(val interface{}) error {
 	case map[string]interface{}:
 	case []interface{}:
 	default:
-		return nil
+		if reflect.TypeOf(val).Kind() != reflect.Ptr || reflect.ValueOf(val).Elem().Kind() != reflect.Struct {
+			return nil
+		}
+		return defaults.Set(val)
 	}
 	c := mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),

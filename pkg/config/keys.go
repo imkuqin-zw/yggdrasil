@@ -14,28 +14,31 @@
 
 package config
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 var (
 	KeyBase = "yggdrasil"
 
-	KeyResolver  = "resolver"
-	KeyBalancer  = "balancer"
-	KeyEndpoints = "endpoints"
+	KeySingleResolver  = "resolver"
+	KeySingleBalancer  = "balancer"
+	KeySingleEndpoints = "endpoints"
+	KeySingleAddress   = "address"
+	KeySingleProtocol  = "protocol"
+	KeySingleMetadata  = "metadata"
 
-	KeyClient              = Join(KeyBase, "client")
-	KeyClientInstance      = Join(KeyClient, "{%s}")
-	KeyClientEndpoints     = Join(KeyClient, "{%s}", KeyEndpoints)
-	KeyClientEndpointAddr  = Join(KeyClientEndpoints, "address")
-	KeyClientEndpointProto = Join(KeyClientEndpoints, "protocol")
-	KeyClientEndpointMD    = Join(KeyClientEndpoints, "metadata")
-	KeyClientNamespace     = Join(KeyClientInstance, "namespace")
-	KeyClientProtocolCfg   = Join(KeyClientInstance, "protocolConfig", "{%s}")
-	KeyClientBalancerCfg   = Join(KeyClientInstance, "balancerConfig", "{%s}")
-	KeyClientInterceptor   = Join(KeyClientInstance, "interceptor")
-	KeyClientUnaryInt      = Join(KeyClientInterceptor, "unary")
-	KeyClientStreamInt     = Join(KeyClientInterceptor, "stream")
-	KeyClientIntCfg        = Join(KeyClientInterceptor, "config", "{%s}")
+	KeyClient            = Join(KeyBase, "client")
+	KeyClientInstance    = Join(KeyClient, "{%s}")
+	KeyClientEndpoints   = Join(KeyClient, "{%s}", KeySingleEndpoints)
+	KeyClientNamespace   = Join(KeyClientInstance, "namespace")
+	KeyClientProtocolCfg = Join(KeyClientInstance, "protocolConfig", "{%s}")
+	KeyClientBalancerCfg = Join(KeyClientInstance, "balancerConfig", "{%s}")
+	KeyClientInterceptor = Join(KeyClientInstance, "interceptor")
+	KeyClientUnaryInt    = Join(KeyClientInterceptor, "unary")
+	KeyClientStreamInt   = Join(KeyClientInterceptor, "stream")
+	KeyClientIntCfg      = Join(KeyClientInterceptor, "config", "{%s}")
 
 	KeyServer         = Join(KeyBase, "server")
 	KeyServerProtocol = Join(KeyServer, "protocol")
@@ -49,8 +52,7 @@ var (
 	KeyIntStreamServer = Join(KeyInterceptor, "streamServer")
 	KeyInterceptorCfg  = Join(KeyInterceptor, "config", "{%s}")
 
-	KeyRemoteProto       = Join(KeyBase, "remote.protocol.{%s}")
-	KeyRemoteProtoScheme = Join(KeyRemoteProto, "scheme")
+	KeyRemoteProto = Join(KeyBase, "remote.protocol.{%s}")
 
 	KeyApplication  = Join(KeyBase, "application")
 	KeyAppName      = Join(KeyApplication, "name")
@@ -74,4 +76,23 @@ var (
 
 func Join(s ...string) string {
 	return strings.Join(s, keyDelimiter)
+}
+
+var regx, _ = regexp.Compile(`{([\w.-]+)}`)
+
+func genPath(key, delimiter string) []string {
+	matches := make([]string, 0)
+	key = regx.ReplaceAllStringFunc(key, func(s string) string {
+		matches = append(matches, s[1:len(s)-1])
+		return "{}"
+	})
+	paths := strings.Split(key, delimiter)
+	j := 0
+	for i, item := range paths {
+		if item == "{}" {
+			paths[i] = matches[j]
+			j++
+		}
+	}
+	return paths
 }

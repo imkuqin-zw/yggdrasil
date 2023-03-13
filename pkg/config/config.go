@@ -101,8 +101,24 @@ func (c *config) SetMulti(keys []string, values []interface{}) error {
 	return nil
 }
 
+func (c *config) toSetInterface(val interface{}) interface{} {
+	switch v := val.(type) {
+	case map[interface{}]interface{}:
+		val = xmap.ToMapStringInterface(v)
+	case map[string]interface{}:
+		xmap.CoverInterfaceMapToStringMap(v)
+	case []interface{}:
+		for i, item := range v {
+			v[i] = c.toSetInterface(item)
+		}
+	default:
+	}
+	return val
+}
+
 func (c *config) buildSetMap(key string, val interface{}) map[string]interface{} {
-	keys := strings.Split(strings.ToLower(key), c.keyDelimiter)
+	val = c.toSetInterface(val)
+	keys := genPath(strings.ToLower(key), c.keyDelimiter)
 	xarray.ReverseStringArray(keys)
 	tmp := make(map[string]interface{})
 	for i, k := range keys {
@@ -150,7 +166,7 @@ func (c *config) AddWatcher(key string, watcher func(WatchEvent)) error {
 	return nil
 }
 
-func (c *config) DelWatcher(key string, watcher func(WatchEvent)) error {
+func (c *config) DelWatcher(key string, _ func(WatchEvent)) error {
 	c.watcherMu.Lock()
 	defer c.watcherMu.Unlock()
 	delete(c.watchers, key)
@@ -192,7 +208,7 @@ func (c *config) loadSourceData(sourceData source.SourceData) error {
 	if err := sourceData.Unmarshal(&v); err != nil {
 		return err
 	}
-	xmap.CoverInterfaceToStringMap(v)
+	xmap.CoverInterfaceMapToStringMap(v)
 	xmap.MergeStringMap(c.sourceData[sourceData.Priority()], v)
 	return nil
 }
@@ -225,19 +241,24 @@ func (c *config) apply() error {
 		version uint64
 		changes = make(map[string]WatchEventType)
 	)
+
 	kvs := c.traverse(override, c.keyDelimiter)
 	for k, v := range kvs {
 		orig, ok := c.kvs[k]
 		if !ok {
 			changes[k] = WatchEventAdd
 		} else if !reflect.DeepEqual(orig, v) {
-			changes[k] = WatchEventDel
+			changes[k] = WatchEventUpd
 		}
 	}
 	for k := range c.kvs {
 		if _, ok := kvs[k]; !ok {
 			changes[k] = WatchEventDel
 		}
+	}
+	if len(changes) == 0 {
+		c.cacheMu.Unlock()
+		return nil
 	}
 	c.kvs = kvs
 	c.version++
@@ -252,6 +273,9 @@ func (c *config) apply() error {
 
 func lookup(prefix string, target map[string]interface{}, data map[string]interface{}, sep string) {
 	for k, v := range target {
+		if strings.Index(k, ".") > 0 {
+			k = fmt.Sprintf("{%s}", k)
+		}
 		pp := fmt.Sprintf("%s%s%s", prefix, sep, k)
 		if prefix == "" {
 			pp = k

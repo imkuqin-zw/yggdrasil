@@ -18,15 +18,12 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/creasty/defaults"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xmap"
 	"github.com/mitchellh/mapstructure"
 )
-
-var regx, _ = regexp.Compile(`{([\w.-]+)}`)
 
 type values struct {
 	keyDelimiter string
@@ -45,24 +42,7 @@ func (vs *values) get(key string) interface{} {
 	if ok {
 		return dd
 	}
-	return xmap.DeepSearchInMap(vs.val, vs.genPath(key)...)
-}
-
-func (vs *values) genPath(key string) []string {
-	matches := make([]string, 0)
-	key = regx.ReplaceAllStringFunc(key, func(s string) string {
-		matches = append(matches, s[1:len(s)-1])
-		return "{}"
-	})
-	paths := strings.Split(key, vs.keyDelimiter)
-	j := 0
-	for i, item := range paths {
-		if item == "{}" {
-			paths[i] = matches[j]
-			j++
-		}
-	}
-	return paths
+	return xmap.DeepSearchInMap(vs.val, genPath(key, vs.keyDelimiter)...)
 }
 
 func (vs *values) Get(key string) Value {
@@ -83,7 +63,7 @@ func (vs *values) GetMulti(keys ...string) Value {
 }
 
 func (vs *values) Del(key string) error {
-	paths := strings.Split(key, vs.keyDelimiter)
+	paths := genPath(key, vs.keyDelimiter)
 	tmp := vs.val
 	var ok bool
 	for _, path := range paths[:len(paths)-1] {
@@ -97,7 +77,7 @@ func (vs *values) Del(key string) error {
 }
 
 func (vs *values) Set(key string, val interface{}) error {
-	paths := strings.Split(key, vs.keyDelimiter)
+	paths := genPath(key, vs.keyDelimiter)
 	tmp := vs.val
 	var ok bool
 	for _, path := range paths[:len(paths)-1] {

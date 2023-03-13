@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/interceptor"
@@ -126,24 +127,32 @@ func (s *server) Stop() error {
 	return multierr.Combine(errs...)
 }
 
-func (s *server) Serve() (<-chan struct{}, <-chan error, error) {
+func (s *server) Serve() (<-chan struct{}, <-chan struct{}, <-chan error) {
+	finishCh := make(chan error)
 	s.mu.Lock()
 	if s.state == serverStateClosing {
 		s.mu.Unlock()
-		return nil, nil, errors.New("server stopped")
+		finishCh <- errors.New("server stopped")
+		return nil, nil, finishCh
 	}
 	if s.state == serverStateRunning {
 		s.mu.Unlock()
-		return nil, nil, errors.New("server already serve")
+		finishCh <- errors.New("server already serve")
+		return nil, nil, finishCh
 	}
 	s.state = serverStateRunning
 	s.mu.Unlock()
-	var err error
-	var finishCh = make(chan error)
+	var (
+		servers      = s.servers
+		initFinishCh = make(chan struct{})
+		initNum      atomic.Int32
+		serviceNum   = int32(len(services))
+	)
+
 	g, ctx := errgroup.WithContext(context.Background())
 	go func() {
 		defer close(finishCh)
-		for _, item := range s.servers {
+		for _, item := range servers {
 			svr := item
 			g.Go(func() error {
 				ch, err := svr.Serve()
@@ -153,16 +162,19 @@ func (s *server) Serve() (<-chan struct{}, <-chan error, error) {
 					return err
 				}
 				info := svr.Info()
-				logger.InfoFiled("server start", logger.String("endpoint", fmt.Sprintf("%s://%s", info.Protocol, info.Address)))
+				logger.InfoFiled("server start", logger.String("endpoint",
+					fmt.Sprintf("%s://%s", info.Protocol, info.Address)))
+				if initNum.Add(1) == serviceNum {
+					close(initFinishCh)
+				}
 				err, _ = <-ch
 				return err
 			})
 		}
-		err = g.Wait()
-		finishCh <- err
+		finishCh <- g.Wait()
 	}()
 
-	return ctx.Done(), finishCh, err
+	return ctx.Done(), initFinishCh, finishCh
 }
 
 func (s *server) Endpoints() []Endpoint {

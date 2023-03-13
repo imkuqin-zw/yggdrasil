@@ -186,7 +186,7 @@ func _Greeter_SayHello_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	info := &interceptor.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "yggdrasil.example.proto.helloword.Greeter",
+		FullMethod: "/yggdrasil.example.proto.helloword.Greeter/SayHello",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GreeterServer).SayHello(ctx, req.(*HelloRequest))

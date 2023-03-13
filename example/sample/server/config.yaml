@@ -7,6 +7,13 @@ yggdrasil:
     protocol:
       grpc:
         address: "127.0.0.1:55879"
+
+  interceptor:
+    unaryServer: "logger"
+    streamServer: "logger"
+    config:
+      logger:
+        printReqAndRes: true
 #    grpc:
 #      host: 127.0.0.1
 #      port: 30001

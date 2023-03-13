@@ -85,22 +85,22 @@ func ToMapStringInterface(src map[interface{}]interface{}) map[string]interface{
 	return tgt
 }
 
-func CoverInterfaceToStringMap(src map[string]interface{}) {
+func CoverInterfaceMapToStringMap(src map[string]interface{}) {
 	for k, v := range src {
 		switch v := v.(type) {
 		case map[interface{}]interface{}:
 			src[k] = ToMapStringInterface(v)
-			CoverInterfaceToStringMap(src[k].(map[string]interface{}))
+			CoverInterfaceMapToStringMap(src[k].(map[string]interface{}))
 		case map[string]interface{}:
-			CoverInterfaceToStringMap(src[k].(map[string]interface{}))
+			CoverInterfaceMapToStringMap(src[k].(map[string]interface{}))
 		case []interface{}:
 			for i, item := range v {
 				switch item := item.(type) {
 				case map[interface{}]interface{}:
 					v[i] = ToMapStringInterface(item)
-					CoverInterfaceToStringMap(v[i].(map[string]interface{}))
+					CoverInterfaceMapToStringMap(v[i].(map[string]interface{}))
 				case map[string]interface{}:
-					CoverInterfaceToStringMap(v[i].(map[string]interface{}))
+					CoverInterfaceMapToStringMap(v[i].(map[string]interface{}))
 				default:
 				}
 			}
@@ -136,6 +136,7 @@ func CloneMap(src map[string]interface{}) (map[string]interface{}, error) {
 	// https://gist.github.com/soroushjp/0ec92102641ddfc3ad5515ca76405f4d
 	var buf bytes.Buffer
 	gob.Register(map[string]interface{}{})
+	gob.Register(map[string]string{})
 	gob.Register([]interface{}{})
 	enc := gob.NewEncoder(&buf)
 	dec := gob.NewDecoder(&buf)

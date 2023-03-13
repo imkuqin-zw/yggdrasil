@@ -173,17 +173,20 @@ func getStreamServerIntBuilder(name string) StreamServerIntBuilder {
 
 // ChainUnaryClientInterceptors chains all unary client interceptors into one.
 func ChainUnaryClientInterceptors(serviceName string, names []string) UnaryClientInterceptor {
-	if len(names) == 0 {
+	interceptors := make([]UnaryClientInterceptor, 0, len(names))
+	for _, item := range names {
+		if f := getUnaryClientIntBuilder(item); f != nil {
+			interceptors = append(interceptors, f(serviceName))
+		} else {
+			logger.WarnFiled("not found unary client interceptor", logger.String("name", item))
+		}
+	}
+	if len(interceptors) == 0 {
 		return func(ctx context.Context, method string, req, reply interface{}, invoker UnaryInvoker) error {
 			return invoker(ctx, method, req, reply)
 		}
-	}
-	if len(names) == 1 {
-		return getUnaryClientIntBuilder(names[0])(serviceName)
-	}
-	interceptors := make([]UnaryClientInterceptor, len(names))
-	for _, item := range names {
-		interceptors = append(interceptors, getUnaryClientIntBuilder(item)(serviceName))
+	} else if len(interceptors) == 1 {
+		return interceptors[0]
 	}
 	return func(ctx context.Context, method string, req, reply interface{}, invoker UnaryInvoker) error {
 		return interceptors[0](ctx, method, req, reply, getChainUnaryInvoker(interceptors, 0, invoker))
@@ -202,17 +205,20 @@ func getChainUnaryInvoker(interceptors []UnaryClientInterceptor, curr int, final
 
 // ChainStreamClientInterceptors chains all stream client interceptors into one.
 func ChainStreamClientInterceptors(serviceName string, names []string) StreamClientInterceptor {
-	if len(names) == 0 {
+	interceptors := make([]StreamClientInterceptor, 0, len(names))
+	for _, item := range names {
+		if f := getStreamClientIntBuilder(item); f != nil {
+			interceptors = append(interceptors, f(serviceName))
+		} else {
+			logger.WarnFiled("not found stream client interceptor", logger.String("name", item))
+		}
+	}
+	if len(interceptors) == 0 {
 		return func(ctx context.Context, desc *stream.StreamDesc, method string, streamer Streamer) (stream.ClientStream, error) {
 			return streamer(ctx, desc, method)
 		}
-	}
-	if len(names) == 1 {
-		return getStreamClientIntBuilder(names[0])(serviceName)
-	}
-	interceptors := make([]StreamClientInterceptor, len(names))
-	for _, item := range names {
-		interceptors = append(interceptors, getStreamClientIntBuilder(item)(serviceName))
+	} else if len(interceptors) == 1 {
+		return interceptors[0]
 	}
 	return func(ctx context.Context, desc *stream.StreamDesc, method string, streamer Streamer) (stream.ClientStream, error) {
 		return interceptors[0](ctx, desc, method, getChainStreamer(interceptors, 0, streamer))
@@ -231,22 +237,21 @@ func getChainStreamer(interceptors []StreamClientInterceptor, curr int, finalStr
 
 // ChainUnaryServerInterceptors chains all unary server interceptors into one.
 func ChainUnaryServerInterceptors(names []string) UnaryServerInterceptor {
-	interceptors := make([]UnaryServerInterceptor, len(names))
+	interceptors := make([]UnaryServerInterceptor, 0, len(names))
 	for _, item := range names {
 		builder := getUnaryServerIntBuilder(item)
 		if builder == nil {
-			logger.WarnFiled("not found unary server interceptor", logger.String("name", names[0]))
+			logger.WarnFiled("not found unary server interceptor", logger.String("name", item))
 			continue
 		}
 		interceptors = append(interceptors, builder())
 	}
+
 	if len(interceptors) == 0 {
 		return func(ctx context.Context, req interface{}, info *UnaryServerInfo, handler UnaryHandler) (interface{}, error) {
 			return handler(ctx, req)
 		}
-	}
-
-	if len(interceptors) == 1 {
+	} else if len(interceptors) == 1 {
 		return interceptors[0]
 	}
 
@@ -266,18 +271,22 @@ func getChainUnaryHandler(interceptors []UnaryServerInterceptor, curr int, info 
 
 // ChainStreamServerInterceptors chains all stream server interceptors into one.
 func ChainStreamServerInterceptors(names []string) StreamServerInterceptor {
-	if len(names) == 0 {
+	interceptors := make([]StreamServerInterceptor, 0, len(names))
+	for _, item := range names {
+		builder := getStreamServerIntBuilder(item)
+		if builder == nil {
+			logger.WarnFiled("not found stream server interceptor", logger.String("name", item))
+			continue
+		}
+		interceptors = append(interceptors, builder())
+	}
+
+	if len(interceptors) == 0 {
 		return func(srv interface{}, ss stream.ServerStream, info *StreamServerInfo, handler stream.StreamHandler) error {
 			return handler(srv, ss)
 		}
-	}
-	if len(names) == 1 {
-		return getStreamServerIntBuilder(names[0])()
-	}
-
-	interceptors := make([]StreamServerInterceptor, len(names))
-	for _, item := range names {
-		interceptors = append(interceptors, getStreamServerIntBuilder(item)())
+	} else if len(interceptors) == 1 {
+		return interceptors[0]
 	}
 	return func(srv interface{}, ss stream.ServerStream, info *StreamServerInfo, handler stream.StreamHandler) error {
 		return interceptors[0](srv, ss, info, getChainStreamHandler(interceptors, 0, info, handler))

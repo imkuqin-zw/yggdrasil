@@ -20,6 +20,11 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 )
 
+const (
+	ServerKindRpc      = "rpc"
+	ServerKindGovernor = "governor"
+)
+
 var (
 	instanceInfo = &instance{}
 	once         sync.Once
@@ -33,7 +38,7 @@ func InitInstanceInfo() {
 			zone:      config.GetString(config.KeyAppZone, ""),
 			campus:    config.GetString(config.KeyAppCampus, ""),
 			namespace: config.GetString(config.KeyAppNamespace, "default"),
-			version:   config.GetString(config.KeyAppVersion, "v1"),
+			version:   config.GetString(config.KeyAppVersion, "1.0.0"),
 			metadata:  config.GetStringMap(config.KeyAppMetadata, map[string]string{}),
 		}
 	})

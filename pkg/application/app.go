@@ -55,11 +55,6 @@ const (
 	registryStateCancel
 )
 
-const (
-	ServerKindRpc      = "rpc"
-	ServerKindGovernor = "governor"
-)
-
 type Endpoint struct {
 	address string
 	scheme  string
@@ -188,7 +183,10 @@ func (app *Application) register() {
 	app.mu.Unlock()
 	if err := app.registry.Register(context.TODO(), app); err != nil {
 		logger.ErrorFiled("fault to register application", logger.Err(err))
+		_ = app.Stop()
+		return
 	}
+	logger.Info("application has been registered")
 }
 
 func (app *Application) deregister() {
@@ -212,21 +210,36 @@ func (app *Application) deregister() {
 func (app *Application) startServers(ctx context.Context) error {
 	app.runHooks(StageBeforeStart)
 	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		cancelCh, stoppedCh, err := app.server.Serve()
-		if err != nil {
-			return err
-		}
-		go func() {
-			<-cancelCh
-			_ = app.Stop()
-		}()
-		err, _ = <-stoppedCh
-		return err
-	})
+	waitServer := make(chan struct{})
+	if app.server != nil {
+		eg.Go(func() error {
+			cancelCh, initedCh, stoppedCh := app.server.Serve()
+			select {
+			case <-initedCh:
+				close(waitServer)
+				select {
+				case <-cancelCh:
+					_ = app.Stop()
+					err, _ := <-stoppedCh
+					return err
+				case err, _ := <-stoppedCh:
+					return err
+				}
+			case <-cancelCh:
+				_ = app.Stop()
+				err, _ := <-stoppedCh
+				return err
+			case err, _ := <-stoppedCh:
+				return err
+			}
+		})
+	} else {
+		close(waitServer)
+	}
 	eg.Go(func() error {
 		return app.governor.Serve()
 	})
+	<-waitServer
 	app.register()
 	return eg.Wait()
 }
@@ -236,9 +249,11 @@ func (app *Application) stopServers() error {
 	eg.Go(func() error {
 		return app.governor.Stop()
 	})
-	eg.Go(func() error {
-		return app.server.Stop()
-	})
+	if app.server != nil {
+		eg.Go(func() error {
+			return app.server.Stop()
+		})
+	}
 	return eg.Wait()
 }
 
@@ -272,18 +287,20 @@ func (app *Application) Metadata() map[string]string {
 
 func (app *Application) Endpoints() []registry.Endpoint {
 	endpoints := make([]registry.Endpoint, 0)
-	for _, item := range app.server.Endpoints() {
-		attr := xmap.CloneStringMap(item.Metadata())
-		attr["serverKind"] = ServerKindRpc
-		endpoints = append(endpoints, Endpoint{
-			address: item.Address(),
-			scheme:  item.Scheme(),
-			Attr:    attr,
-		})
+	if app.server != nil {
+		for _, item := range app.server.Endpoints() {
+			attr := xmap.CloneStringMap(item.Metadata())
+			attr[registry.MDServerKind] = pkg.ServerKindRpc
+			endpoints = append(endpoints, Endpoint{
+				address: item.Address(),
+				scheme:  item.Scheme(),
+				Attr:    attr,
+			})
+		}
 	}
 	governorInfo := app.governor.Info()
 	attr := xmap.CloneStringMap(governorInfo.Attr)
-	attr["serverKind"] = ServerKindGovernor
+	attr[registry.MDServerKind] = pkg.ServerKindGovernor
 	endpoints = append(endpoints, Endpoint{
 		address: governorInfo.Address,
 		scheme:  governorInfo.Scheme,

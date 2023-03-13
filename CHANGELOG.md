@@ -1,74 +1,68 @@
-<a name="unreleased"></a>
-
-## [Unreleased]
-
-<a name="v0.1.3"></a>
-
-## [v0.1.3] - 2022-08-02
-
-### Code Refactoring
-
-- change framework log format
+# 1.1.0 (2023/03/13)
 
 ### Features
 
-- log add context filed
-- log support add fields and log interface add w function
-
-<a name="v0.1.2"></a>
-
-## [v0.1.2] - 2022-07-29
-
-### Features
-
-- server serverInfo add get host function
-- grpc md support header and trailer
-- add before start hook
-- add BeforeStart hook
-- add error code filed to the Reason
-- server listen serverInfo add to config and add function to get endpoints
-
-### Performance Improvements
-
-- optimization polaris resolver
-- add reason error help function
-
-<a name="v0.1.1"></a>
-
-## [v0.1.1] - 2022-07-14
+- feat: 完善example
+- feat: 添加注册实例metadata常量serverKink
+- feat: 将service注册放入yggdrasil入口的选项中
+- refactor: 重构server启动函数的逻辑
+- refactor: refactoring production code
+- style: add change log
 
 ### Bug Fixes
 
-- config value cannot read []string
-- **polaris:** polaris config_source load config error
+- fix: cloneMap函数中gob注册map[string]string{}类型，并修改CoverInterfaceToStringMap名字为CoverInterfaceMapToStringMap
+- fix: 修复grpc transport关闭时不能正常退出的问题
+- fix: 修复xnet工具获取IP地址时返回非ipv4的地址
+- fix: 修复中间件初始化函数取错名字和空指针问题
+- fix: 修复配置key中含有tag时配置api失效的问题
+- fix: 修改服务发现和负载的逻辑问题
+- fix: 修复server为空时恐慌和注册时服务未初始化的问题
+- fix: 修改rpc生成器FullMethod错误bug
 
-### Code Refactoring
-
-- modify polaris-go dependence to third_party
-- change grpc log init mode
-
-### Features
-
-- actively stop function
-- config key tag support -
-
-### Performance Improvements
-
-- optimize polaris balancer log
-
-<a name="v0.1.0"></a>
-
-## v0.1.0 - 2022-07-06
+# 0.1.3 (2022/08/12)
 
 ### Features
 
-- initial version source code
+- refactor: change framework log format
+- feat: log add context filed
+- feat: log support add fields and log interface add w function
 
-[Unreleased]: https://github.com/imkuqin-zw/yggdrasil/compare/v0.1.3...HEAD
+# 0.1.2 (2022/08/12)
 
-[v0.1.3]: https://github.com/imkuqin-zw/yggdrasil/compare/v0.1.2...v0.1.3
+### Features
 
-[v0.1.2]: https://github.com/imkuqin-zw/yggdrasil/compare/v0.1.1...v0.1.2
+- style: copyright
+- style: add copyright
+- style: LICENSE
+- style: add copyright
+- perf: optimization polaris resolver
+- feat: server info add get host function
+- feat: grpc md support header and trailer
+- feat: add before start hook
+- feat: add BeforeStart hook
+- perf: add reason error help function
+- feat: add error code filed to the Reason
+- feat: server listen info add to config and add function to get endpoints
 
-[v0.1.1]: https://github.com/imkuqin-zw/yggdrasil/compare/v0.1.0...v0.1.1
-  
+# 0.1.1 (2022/08/12)
+
+### Features
+
+- refactor: modify polaris-go dependence to third_party
+- feat: actively stop function
+- perf: optimize polaris balancer log
+- feat: config key tag support -
+- refactor: change grpc log init mode
+
+### Bug Fixes
+
+- fix: config value cannot read []string
+- fix(polaris): polaris config_source load config error
+
+# 0.1.0 (2022/08/12)
+
+### Features
+
+- feat: initial version source code
+- Initial commit

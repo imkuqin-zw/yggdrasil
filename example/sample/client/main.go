@@ -30,6 +30,7 @@ func main() {
 	if err := config.LoadSource(file.NewSource("./config.yaml", false)); err != nil {
 		logger.Fatal(err)
 	}
+	yggdrasil.Init("github.com.imkuqin_zw.yggdrasil.example.sample.client")
 	client := helloword.NewGreeterClient(yggdrasil.NewClient("github.com.imkuqin_zw.yggdrasil.example.sample"))
 	_, err := client.SayHello(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
 	if err != nil {

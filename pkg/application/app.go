@@ -239,8 +239,10 @@ func (app *Application) startServers(ctx context.Context) error {
 	eg.Go(func() error {
 		return app.governor.Serve()
 	})
-	<-waitServer
-	app.register()
+	go func() {
+		<-waitServer
+		app.register()
+	}()
 	return eg.Wait()
 }
 

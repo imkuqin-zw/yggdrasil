@@ -65,8 +65,8 @@ var (
 
 	KeyTracer   = Join(KeyBase, "tracer")
 	KeyRegistry = Join(KeyBase, "registry")
-	KeyLogger   = Join(KeyBase, "logger")
 
+	KeyLogger        = Join(KeyBase, "logger")
 	KeyLoggerLevel   = Join(KeyLogger, "level")
 	KeyLoggerName    = Join(KeyLogger, "name")
 	KeyLoggerTimeEnc = Join(KeyLogger, "timeEncoder")

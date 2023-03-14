@@ -33,7 +33,9 @@ import (
 
 var (
 	app         = application.New()
+	appRunning  atomic.Bool
 	initialized atomic.Bool
+	opts        = &options{serviceDesc: map[*server.ServiceDesc]interface{}{}}
 )
 
 func NewServer() server.Server {
@@ -48,33 +50,38 @@ func NewClient(name string) client.Client {
 	return cli
 }
 
-func Init(appName string, ops ...Option) error {
+func Init(appName string, ops ...Option) {
 	if !initialized.CompareAndSwap(false, true) {
-		return errors.New("yggdrasil had already init")
+		return
 	}
-	opts := &options{serviceDesc: map[*server.ServiceDesc]interface{}{}}
 	initLogger()
 	initInstanceInfo(appName)
 	applyOpt(opts, ops...)
 	initRegistry(opts)
 	initTracer()
 	initGovernor(opts)
-	initServer(opts)
-	app.Init(opts.getAppOpts()...)
-	return nil
+	return
 }
 
-func Start() error {
+func Serve(ops ...Option) error {
+	if !appRunning.CompareAndSwap(false, true) {
+		return errors.New("application had already running")
+	}
 	if !initialized.Load() {
 		return errors.New("please initialize the yggdrasil before starting")
 	}
+	applyOpt(opts, ops...)
+	initServer(opts)
+	app.Init(opts.getAppOpts()...)
 	return app.Run()
 }
 
 func Run(appName string, ops ...Option) error {
-	if err := Init(appName, ops...); err != nil {
-		return err
+	if !appRunning.CompareAndSwap(false, true) {
+		return errors.New("application had already running")
 	}
+	Init(appName, ops...)
+	app.Init(opts.getAppOpts()...)
 	return app.Run()
 }
 

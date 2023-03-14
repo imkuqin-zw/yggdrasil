@@ -81,6 +81,7 @@ func Run(appName string, ops ...Option) error {
 		return errors.New("application had already running")
 	}
 	Init(appName, ops...)
+	initServer(opts)
 	app.Init(opts.getAppOpts()...)
 	return app.Run()
 }

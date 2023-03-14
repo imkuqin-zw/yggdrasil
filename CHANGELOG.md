@@ -1,3 +1,16 @@
+# 1.1.1 (2023/03/14)
+
+### Features
+
+- refactor: 修改init和serve流程，使得可以无需启动server使用框架的其它功能
+- style: 修改changelog
+
+### Bug Fixes
+
+- fix: 修复Run未初始化server
+- fix: 修改例子中protobuf编译结果和server启动方式
+- fix: 修复服务启动异常是程序无法退出问题
+
 # 1.1.0 (2023/03/13)
 
 ### Features

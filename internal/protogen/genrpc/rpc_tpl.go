@@ -349,6 +349,7 @@ var {{$svrType}}ServiceDesc = {{$server}}ServiceDesc{
 		{{end -}}
 		{{end -}}
 	},
+{{if $.NeedStream -}}
 	Streams: []{{$.Stream}}StreamDesc{
 		{{range .Methods -}}
 		{{if or .ClientStream .ServerStream -}}
@@ -365,6 +366,7 @@ var {{$svrType}}ServiceDesc = {{$server}}ServiceDesc{
 		{{end -}}
 		{{end -}}
 	},
+{{end -}}
 	Metadata: "{{.Filename}}",
 }
 `

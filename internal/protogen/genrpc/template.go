@@ -35,6 +35,7 @@ type serviceDesc struct {
 	Interceptor           string
 	Md                    string
 	Stream                string
+	NeedStream            bool
 }
 
 type methodDesc struct {

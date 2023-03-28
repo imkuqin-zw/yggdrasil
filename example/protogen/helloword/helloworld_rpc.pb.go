@@ -15,6 +15,7 @@ import (
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the yggdrasil package it is being compiled against.
+var _ = new(metadata.MD)
 
 type GreeterClient interface {
 	SayHello(context.Context, *HelloRequest) (*HelloReply, error)

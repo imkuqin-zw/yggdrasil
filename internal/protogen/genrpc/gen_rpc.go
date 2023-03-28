@@ -22,7 +22,6 @@ import (
 
 const (
 	contextPackage     = protogen.GoImportPath("context")
-	typesPackage       = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/types")
 	statusPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/status")
 	streamPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/stream")
 	clientPackage      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/client")
@@ -31,8 +30,6 @@ const (
 	metadataPackage    = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/metadata")
 	codePackage        = protogen.GoImportPath("google.golang.org/genproto/googleapis/rpc/code")
 )
-
-var methodSets = make(map[string]int)
 
 func GenerateFiles(gen *protogen.Plugin, file *protogen.File) {
 	if len(file.Services) == 0 {
@@ -45,7 +42,7 @@ func generateRpcFile(gen *protogen.Plugin, file *protogen.File) {
 	filename := file.GeneratedFilenamePrefix + "_rpc.pb.go"
 	g := gen.NewGeneratedFile(filename, file.GoImportPath)
 	generateHeader(g, file)
-	generateFileContent(gen, file, g, false)
+	generateFileContent(gen, file, g)
 }
 
 func generateHeader(g *protogen.GeneratedFile, file *protogen.File) {
@@ -55,18 +52,16 @@ func generateHeader(g *protogen.GeneratedFile, file *protogen.File) {
 	g.P()
 }
 
-// generateFileContent generates the kratos errors definitions, excluding the package statement.
-func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, isServer bool) {
+func generateFileContent(_ *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile) {
 	g.P("// This is a compile-time assertion to ensure that this generated file")
 	g.P("// is compatible with the yggdrasil package it is being compiled against.")
-	// g.P("var _ = new(", contextPackage.Ident("Context"), ")")
+	g.P("var _ = new(", metadataPackage.Ident("MD"), ")")
 	g.P()
 
 	for _, service := range file.Services {
 		if len(service.Methods) > 0 {
 			genService(g, service, file)
 		}
-
 	}
 }
 
@@ -89,8 +84,8 @@ func genService(g *protogen.GeneratedFile, service *protogen.Service, file *prot
 		Server:                g.QualifiedGoIdent(serverPackage.Ident("")),
 		Interceptor:           g.QualifiedGoIdent(interceptorPackage.Ident("")),
 		Md:                    g.QualifiedGoIdent(metadataPackage.Ident("")),
+		NeedStream:            false,
 	}
-	needType := false
 	for _, method := range service.Methods {
 		tmp := &methodDesc{
 			Name:         method.GoName,
@@ -100,11 +95,11 @@ func genService(g *protogen.GeneratedFile, service *protogen.Service, file *prot
 			ServerStream: method.Desc.IsStreamingServer(),
 		}
 		if tmp.ClientStream || tmp.ServerStream {
-			needType = true
+			sd.NeedStream = true
 		}
 		sd.Methods = append(sd.Methods, tmp)
 	}
-	if needType {
+	if sd.NeedStream {
 		sd.Stream = g.QualifiedGoIdent(streamPackage.Ident(""))
 	}
 	if len(sd.Methods) != 0 {

@@ -38,7 +38,7 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) {
 
 	g := gen.NewGeneratedFile(filename, file.GoImportPath)
 	generateHeader(g, file)
-	generateFileContent(gen, file, g, true)
+	generateFileContent(gen, file, g)
 }
 
 func generateHeader(g *protogen.GeneratedFile, file *protogen.File) {
@@ -48,8 +48,7 @@ func generateHeader(g *protogen.GeneratedFile, file *protogen.File) {
 	g.P()
 }
 
-// generateFileContent generates the kratos errors definitions, excluding the package statement.
-func generateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, isServer bool) {
+func generateFileContent(_ *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile) {
 	g.P("// This is a compile-time assertion to ensure that this generated file")
 	g.P("// is compatible with the yggdrasil package it is being compiled against.")
 	g.P()

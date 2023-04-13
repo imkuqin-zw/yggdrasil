@@ -146,7 +146,7 @@ func (s *server) Serve() (<-chan struct{}, <-chan struct{}, <-chan error) {
 		servers      = s.servers
 		initFinishCh = make(chan struct{})
 		initNum      atomic.Int32
-		serviceNum   = int32(len(services))
+		serviceNum   = int32(len(servers))
 	)
 
 	g, ctx := errgroup.WithContext(context.Background())

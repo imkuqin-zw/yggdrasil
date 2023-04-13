@@ -94,6 +94,7 @@ func (c *mapSourceData) Unmarshal(v interface{}) error {
 	config := mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 		Result:     v,
+		TagName:    "yaml",
 	}
 	decoder, err := mapstructure.NewDecoder(&config)
 	if err != nil {

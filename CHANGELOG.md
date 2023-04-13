@@ -1,7 +1,19 @@
-# 1.1.1 (2023/03/14)
+# 1.1.3 (2023/04/13)
 
 ### Features
 
+- feat: map source 读取yaml标签
+
+### Bug Fixes
+
+- fix: 修复多个service时server启动阻塞问题
+- fix: 修改rpc生成器引用未使用和没有stream接口时stream引用错误的问题
+
+# 1.1.2 (2023/03/14)
+
+### Features
+
+- style: 更新changelog
 - refactor: 修改init和serve流程，使得可以无需启动server使用框架的其它功能
 - style: 修改changelog
 

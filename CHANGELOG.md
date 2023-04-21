@@ -1,9 +1,16 @@
+# 1.1.5 (2023/04/21)
+
+### Bug Fixes
+
+- fix: 修改日志linux下的格式
+
 # 1.1.4 (2023/04/21)
 
 ### Features
 
 - feat: value和values中scan添加映射yaml标签
 - feat: 环境变量配置，添加数组分割和设置分割符功能
+- CHANGELOG.md
 
 ### Bug Fixes
 

@@ -28,6 +28,21 @@ import (
 type env struct {
 	prefixes         []string
 	strippedPrefixes []string
+	parseArray       bool
+	arraySep         string
+	delimiter        string
+}
+
+func (e *env) parseValue(value string) interface{} {
+	if intValue, err := strconv.Atoi(value); err == nil {
+		return intValue
+	} else if boolValue, err := strconv.ParseBool(value); err == nil {
+		return boolValue
+	} else if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
+		return floatValue
+	} else {
+		return value
+	}
 }
 
 func (e *env) Read() (source.SourceData, error) {
@@ -42,25 +57,30 @@ func (e *env) Read() (source.SourceData, error) {
 				notFound = false
 			}
 			if match, ok := e.matchPrefix(e.strippedPrefixes, key); ok {
-				key = strings.TrimPrefix(key, match+"_")
+				key = strings.TrimPrefix(key, match+e.delimiter)
 				notFound = false
 			}
 			if notFound {
 				continue
 			}
 		}
-		keys := strings.Split(key, "_")
+		keys := strings.Split(key, e.delimiter)
 		xarray.ReverseStringArray(keys)
 		tmp := make(map[string]interface{})
 		for i, k := range keys {
 			if i == 0 {
-				if intValue, err := strconv.Atoi(value); err == nil {
-					tmp[k] = intValue
-				} else if boolValue, err := strconv.ParseBool(value); err == nil {
-					tmp[k] = boolValue
-				} else {
-					tmp[k] = value
+				if e.parseArray {
+					values := strings.Split(value, e.arraySep)
+					if len(values) > 1 {
+						tmpVal := make([]interface{}, len(values))
+						for j, item := range values {
+							tmpVal[j] = e.parseValue(item)
+						}
+						tmp[k] = tmpVal
+						continue
+					}
 				}
+				tmp[k] = e.parseValue(value)
 				continue
 			}
 			tmp = map[string]interface{}{k: tmp}
@@ -74,7 +94,7 @@ func (e *env) Read() (source.SourceData, error) {
 
 func (e *env) matchPrefix(pre []string, s string) (string, bool) {
 	for _, p := range pre {
-		if xstrings.HasPrefix(s, p, "_") {
+		if xstrings.HasPrefix(s, p, e.delimiter) {
 			return p, true
 		}
 	}
@@ -98,7 +118,7 @@ func (e *env) Close() error {
 	return nil
 }
 
-func NewSource(pre, sp []string) source.Source {
+func NewSource(pre, sp []string, opts ...Option) source.Source {
 	for i, item := range pre {
 		pre[i] = strings.ToLower(item)
 	}
@@ -106,5 +126,9 @@ func NewSource(pre, sp []string) source.Source {
 	for i, item := range sp {
 		sp[i] = strings.ToLower(item)
 	}
-	return &env{prefixes: pre, strippedPrefixes: sp}
+	e := &env{prefixes: pre, strippedPrefixes: sp, delimiter: "_"}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e
 }

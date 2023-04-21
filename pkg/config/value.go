@@ -230,6 +230,7 @@ func (m *value) Scan(val interface{}) error {
 	c := mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 		Result:     val,
+		TagName:    "yaml",
 	}
 	decoder, err := mapstructure.NewDecoder(&c)
 	if err != nil {

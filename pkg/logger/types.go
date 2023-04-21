@@ -69,7 +69,7 @@ func (l *Level) unmarshalText(text []byte) bool {
 		*l = LvInfo
 	case "warn", "WARN":
 		*l = LvWarn
-	case "reason", "ERROR":
+	case "error", "ERROR":
 		*l = LvError
 	case "fatal", "FATAL":
 		*l = LvFault

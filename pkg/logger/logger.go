@@ -27,7 +27,7 @@ var (
 )
 
 func init() {
-	lg := &StdLogger{level: LvDebug, lg: log.Default(), kvsMsgFormat: "%-8s%s "}
+	lg := NewStdLogger(LvDebug, log.Default())
 	enc = &jsonEncoder{
 		EncodeTime:     RFC3339TimeEncoder,
 		EncodeDuration: MillisDurationEncoder,

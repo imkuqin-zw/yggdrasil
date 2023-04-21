@@ -37,8 +37,12 @@ type StdLogger struct {
 	kvsMsgFormat string
 }
 
+func NewStdLogger(lv Level, lg *log.Logger) *StdLogger {
+	return &StdLogger{level: lv, lg: lg, kvsMsgFormat: lvFormat + "%s "}
+}
+
 func (l *StdLogger) OpenMsgFormat() {
-	l.kvsMsgFormat = "%-8s%-31s "
+	l.kvsMsgFormat = lvFormat + "%-31s "
 }
 
 func (l *StdLogger) Debug(args ...interface{}) {
@@ -200,7 +204,7 @@ func (l *StdLogger) kvsFormat(lv string, msg string, kvs []interface{}) string {
 func (l *StdLogger) argsFormat(lv string, args []interface{}) string {
 	buf := Get()
 	defer buf.Free()
-	_, _ = fmt.Fprintf(buf, "%-8s", lv)
+	_, _ = fmt.Fprintf(buf, lvFormat, lv)
 	for _, arg := range args {
 		_, _ = fmt.Fprintf(buf, "%v", arg)
 		_ = buf.WriteByte(' ')
@@ -212,7 +216,7 @@ func (l *StdLogger) argsFormat(lv string, args []interface{}) string {
 func (l *StdLogger) tplFormat(lv string, format string, args []interface{}) string {
 	buf := Get()
 	defer buf.Free()
-	_, _ = fmt.Fprintf(buf, "%-8s", lv)
+	_, _ = fmt.Fprintf(buf, lvFormat, lv)
 	_, _ = fmt.Fprintf(buf, format, args...)
 	return buf.String()
 }

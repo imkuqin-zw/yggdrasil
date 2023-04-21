@@ -17,5 +17,5 @@
 package logger
 
 var (
-	lvFormat = "%-8s"
+	lvFormat = "%-18s"
 )

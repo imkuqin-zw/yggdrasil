@@ -7,6 +7,8 @@ yggdrasil:
     protocol:
       grpc:
         address: "127.0.0.1:55879"
+    logger:
+      level: error
 
   interceptor:
     unaryServer: "logger"

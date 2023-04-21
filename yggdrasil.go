@@ -26,6 +26,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/registry"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/server"
 	"github.com/imkuqin-zw/yggdrasil/pkg/tracer"
 	"go.opentelemetry.io/otel"
@@ -127,8 +128,8 @@ func initInstanceInfo(appName string) {
 
 func initLogger() {
 	logName := config.GetString(config.KeyLoggerName, "std")
+	lv := config.GetBytes(config.KeyLoggerLevel, []byte("debug"))
 	if logName == "std" {
-		lv := config.GetBytes(config.KeyLoggerLevel, []byte("debug"))
 		var level logger.Level
 		if err := level.UnmarshalText(lv); err != nil {
 			logger.FatalFiled("fault to unmarshal std logger level", logger.Err(err))
@@ -154,6 +155,15 @@ func initLogger() {
 		return
 	}
 	logger.SetStackPrintState(config.GetBool(config.KeyLoggerStack, false))
+
+	// init remote logger
+	remoteLgLv := config.GetBytes(config.KeyRemoteLgLevel, lv)
+	var remoteLv logger.Level
+	if err := remoteLv.UnmarshalText(remoteLgLv); err != nil {
+		logger.FatalFiled("fault to unmarshal remote logger level", logger.Err(err))
+	}
+	remote.Logger = logger.Clone()
+	remote.Logger.SetLevel(remoteLv)
 }
 
 func initGovernor(opts *options) {

@@ -52,7 +52,8 @@ var (
 	KeyIntStreamServer = Join(KeyInterceptor, "streamServer")
 	KeyInterceptorCfg  = Join(KeyInterceptor, "config", "{%s}")
 
-	KeyRemoteProto = Join(KeyBase, "remote.protocol.{%s}")
+	KeyRemoteProto   = Join(KeyBase, "remote.protocol.{%s}")
+	KeyRemoteLgLevel = Join(KeyBase, "remote.logger.level")
 
 	KeyApplication  = Join(KeyBase, "application")
 	KeyAppName      = Join(KeyApplication, "name")

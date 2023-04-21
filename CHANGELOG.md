@@ -1,3 +1,17 @@
+# 1.1.4 (2023/04/21)
+
+### Features
+
+- feat: value和values中scan添加映射yaml标签
+- feat: 环境变量配置，添加数组分割和设置分割符功能
+
+### Bug Fixes
+
+- fix: 添加remote logger level key
+- fix: 修复config并发崩溃的问题
+- fix: 修复remote日志未跟随日志初始化的问题
+- fix: 修复日志error等级解析失败，默认日志打印格式兼容linux
+
 # 1.1.3 (2023/04/13)
 
 ### Features

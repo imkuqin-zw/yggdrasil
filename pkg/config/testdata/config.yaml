@@ -3,3 +3,6 @@ yggdrasil:
     example.polaris.server:
       grpc:
         target: 127.0.0.1:30001
+
+TestTag:
+  data: "test"

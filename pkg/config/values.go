@@ -34,7 +34,8 @@ func newValues(keyDelimiter string, val map[string]interface{}) *values {
 	if val == nil {
 		val = map[string]interface{}{}
 	}
-	return &values{keyDelimiter: keyDelimiter, val: val}
+	v, _ := xmap.CloneMap(val)
+	return &values{keyDelimiter: keyDelimiter, val: v}
 }
 
 func (vs *values) get(key string) interface{} {

@@ -232,11 +232,11 @@ func (c *config) loadSource(sources ...source.Source) error {
 }
 
 func (c *config) apply() error {
-	c.sourceDataMu.RLock()
+	c.sourceDataMu.Lock()
+	defer c.sourceDataMu.Unlock()
 	override := make(map[string]interface{})
 	xmap.MergeStringMap(override, c.sourceData[:]...)
-	c.sourceDataMu.RUnlock()
-	c.cacheMu.Lock()
+	//c.cacheMu.Lock()
 	var (
 		version uint64
 		changes = make(map[string]WatchEventType)
@@ -257,16 +257,16 @@ func (c *config) apply() error {
 		}
 	}
 	if len(changes) == 0 {
-		c.cacheMu.Unlock()
+		//c.cacheMu.Unlock()
 		return nil
 	}
 	c.kvs = kvs
 	c.version++
 	version = c.version
 	c.vs.Store(versionValues{version: version, values: newValues(c.keyDelimiter, override)})
-	c.cacheMu.Unlock()
+	//c.cacheMu.Unlock()
 	if len(changes) > 0 {
-		c.notify(changes, version, &values{keyDelimiter: c.keyDelimiter, val: override})
+		c.notify(changes, version, newValues(c.keyDelimiter, override))
 	}
 	return nil
 }

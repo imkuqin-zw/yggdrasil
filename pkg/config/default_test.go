@@ -16,17 +16,19 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/env"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func Test__pointerConfig(t *testing.T) {
+func TestConfig_pointerConfig(t *testing.T) {
 	type Config struct {
 		Val *int
 	}
@@ -42,7 +44,7 @@ func Test__pointerConfig(t *testing.T) {
 	assert.Equal(t, 1, *cfg.Val)
 }
 
-func Test__Scan(t *testing.T) {
+func TestConfig_Scan(t *testing.T) {
 	type Config struct {
 		Target string
 	}
@@ -59,7 +61,7 @@ func Test__Scan(t *testing.T) {
 	fmt.Println(c)
 }
 
-func Test__GetContainerDelimiterKey(t *testing.T) {
+func TestConfig_GetContainerDelimiterKey(t *testing.T) {
 	if err := LoadSource(file.NewSource("./testdata/config.yaml", false)); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func Test__GetContainerDelimiterKey(t *testing.T) {
 	assert.Equal(t, []byte(`{"grpc":{"target":"127.0.0.1:30001"}}`), data)
 }
 
-func Test_matchKey(t *testing.T) {
+func TestConfig_matchKey(t *testing.T) {
 	key := "yggdrasil.client.{example.polaris.server}"
 	regx, _ := regexp.Compile("{([\\w.]+)}")
 	matches := make([]string, 0)
@@ -86,4 +88,35 @@ func Test_matchKey(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []string{"yggdrasil", "client", "example.polaris.server"}, paths)
+}
+
+func TestConfig_ScanTags(t *testing.T) {
+	type TestConfig struct {
+		Tag struct {
+			Data string
+		} `yaml:"testTag"`
+	}
+	if err := LoadSource(file.NewSource("./testdata/config.yaml", false)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := TestConfig{}
+	assert.NoError(t, Scan("", &cfg))
+	assert.Equal(t, "test", cfg.Tag.Data)
+}
+
+func TestConfig_EnvFieldCate(t *testing.T) {
+	_ = os.Setenv("DATABASE_PASSWORD", "password")
+	_ = os.Setenv("DATABASE_DATASOURCE", "user:password@tcp(localhost:port)/db?charset=utf8mb4&parseTime=True&loc=Local")
+	_ = os.Setenv("DATABASE_PORT", "3306")
+	type Database struct {
+		Password string
+		Port     int
+		database string
+	}
+	if err := LoadSource(env.NewSource(nil, nil)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Database{}
+	assert.NoError(t, Scan("database", &cfg))
+	assert.Equal(t, 3306, cfg.Port)
 }

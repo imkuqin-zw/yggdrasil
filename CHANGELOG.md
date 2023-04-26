@@ -1,4 +1,19 @@
-# 1.1.5 (2023/04/21)
+# 1.1.7 (2023/04/26)
+
+### Features
+
+- feat: 添加通过governor接口修改配置文件
+- docs: changelog
+
+### Bug Fixes
+
+- fix: 修改动态更改监听未应用的问题
+
+# 1.1.6 (2023/04/21)
+
+### Features
+
+- style: 更新changelog
 
 ### Bug Fixes
 

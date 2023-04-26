@@ -197,10 +197,13 @@ func (c *config) watchSource(source source.Source) {
 			}
 			if err := c.loadSourceData(change); err != nil {
 				logger.Errorf("fault to load source data, err: %+v", err)
+				continue
+			}
+			if err := c.apply(); err != nil {
+				logger.ErrorFiled("fault to apply source data", logger.Err(err))
 			}
 		}
 	}
-
 }
 
 func (c *config) loadSourceData(sourceData source.SourceData) error {

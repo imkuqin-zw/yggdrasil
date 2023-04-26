@@ -18,10 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/pprof"
-	"os"
 	"runtime/debug"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 )
 
 func Init() {
@@ -41,30 +38,9 @@ func handleFunc() {
 	HandleFunc("/debug/pprof/profile", pprof.Profile)
 	HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	HandleFunc("/debug/pprof/tracer", pprof.Trace)
-	HandleFunc("/configs", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-		encoder := json.NewEncoder(w)
-		if r.URL.Query().Get("pretty") == "true" {
-			encoder.SetIndent("", "    ")
-		}
-		_ = encoder.Encode(json.RawMessage(config.Bytes()))
-	})
-	HandleFunc("/debug/env", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-		encoder := json.NewEncoder(w)
-		if r.URL.Query().Get("pretty") == "true" {
-			encoder.SetIndent("", "    ")
-		}
-		_ = encoder.Encode(os.Environ())
-	})
+	HandleFunc("/env", envHandle)
+	HandleFunc("/configs", configHandle)
 	if info, ok := debug.ReadBuildInfo(); ok {
-		HandleFunc("/mod", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(200)
-			encoder := json.NewEncoder(w)
-			if r.URL.Query().Get("pretty") == "true" {
-				encoder.SetIndent("", "    ")
-			}
-			_ = encoder.Encode(info)
-		})
+		HandleFunc("/build_info", newBuildInfoHandle(info))
 	}
 }

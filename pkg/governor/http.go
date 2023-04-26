@@ -21,7 +21,7 @@ import (
 var (
 	// DefaultServeMux ...
 	DefaultServeMux = http.NewServeMux()
-	routes          = []string{}
+	routes          []string
 )
 
 // HandleFunc ...

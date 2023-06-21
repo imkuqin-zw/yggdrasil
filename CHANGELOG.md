@@ -1,3 +1,11 @@
+# 1.1.8 (2023/06/21)
+
+### Features
+
+- refactor: 修改reason直接使用google.rpc.Code
+- perf: 优化客户端创建流的重试逻辑
+- docs: CHANGELOG.md
+
 # 1.1.7 (2023/04/26)
 
 ### Features

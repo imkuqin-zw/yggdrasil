@@ -1,3 +1,10 @@
+# 1.1.9 (2023/06/21)
+
+### Features
+
+- perf: 客户端重试时忽略无可用实例情况，并减少创建picker
+- docs: CHANGELOG.md
+
 # 1.1.8 (2023/06/21)
 
 ### Features

@@ -281,9 +281,7 @@ func (c *client) waitForResolved(ctx context.Context) error {
 	}
 }
 
-func (c *client) newConnStream(ctx context.Context, desc *stream.StreamDesc, method string) (stream.ClientStream, error) {
-	snap := c.pickSnap
-	picker := snap.balancer.GetPicker()
+func (c *client) newConnStream(ctx context.Context, picker balancer.Picker, snap pickSnap, desc *stream.StreamDesc, method string) (stream.ClientStream, error) {
 	r, err := picker.Next(balancer.RpcInfo{
 		Ctx:    ctx,
 		Method: method,
@@ -297,9 +295,6 @@ func (c *client) newConnStream(ctx context.Context, desc *stream.StreamDesc, met
 	}
 	st, err := cli.NewStream(ctx, desc, method)
 	if err != nil {
-		if err == balancer.ErrNoAvailableInstance {
-			return nil, status.New(code.Code_UNAVAILABLE, err)
-		}
 		r.Report(err)
 		return nil, err
 	}
@@ -315,12 +310,17 @@ func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method 
 		return nil, err
 	}
 	retries := 0
+	snap := c.pickSnap
+	picker := snap.balancer.GetPicker()
 	for {
-		st, err := c.newConnStream(ctx, desc, method)
+		st, err := c.newConnStream(ctx, picker, snap, desc, method)
 		if err == nil {
 			return st, nil
 		}
 		logger.ErrorFiled("fault to new stream", logger.Err(err))
+		if err == balancer.ErrNoAvailableInstance {
+			return nil, status.New(code.Code_UNAVAILABLE, err)
+		}
 		if retries > 3 {
 			return nil, err
 		}

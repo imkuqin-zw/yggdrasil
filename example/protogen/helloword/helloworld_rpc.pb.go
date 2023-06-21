@@ -19,6 +19,7 @@ var _ = new(metadata.MD)
 
 type GreeterClient interface {
 	SayHello(context.Context, *HelloRequest) (*HelloReply, error)
+	SayError(context.Context, *HelloRequest) (*HelloReply, error)
 	SayHelloStream(context.Context) (GreeterSayHelloStreamClient, error)
 	SayHelloClientStream(context.Context) (GreeterSayHelloClientStreamClient, error)
 	SayHelloServerStream(context.Context, *HelloRequest) (GreeterSayHelloServerStreamClient, error)
@@ -52,6 +53,15 @@ func NewGreeterClient(cc client.Client) GreeterClient {
 func (c *greeterClient) SayHello(ctx context.Context, in *HelloRequest) (*HelloReply, error) {
 	out := new(HelloReply)
 	err := c.cc.Invoke(ctx, "/yggdrasil.example.proto.helloword.Greeter/SayHello", in, out)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *greeterClient) SayError(ctx context.Context, in *HelloRequest) (*HelloReply, error) {
+	out := new(HelloReply)
+	err := c.cc.Invoke(ctx, "/yggdrasil.example.proto.helloword.Greeter/SayError", in, out)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +205,24 @@ func _Greeter_SayHello_Handler(srv interface{}, ctx context.Context, dec func(in
 	return unaryInt(ctx, in, info, handler)
 }
 
+func _Greeter_SayError_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, unaryInt interceptor.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HelloRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if unaryInt == nil {
+		return srv.(GreeterServer).SayError(ctx, in)
+	}
+	info := &interceptor.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/yggdrasil.example.proto.helloword.Greeter/SayError",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GreeterServer).SayError(ctx, req.(*HelloRequest))
+	}
+	return unaryInt(ctx, in, info, handler)
+}
+
 func _Greeter_SayHelloStream_Handler(srv interface{}, stream stream.ServerStream) error {
 	return srv.(GreeterServer).SayHelloStream(&greeterSayHelloStreamServer{stream})
 }
@@ -301,6 +329,7 @@ func (x *greeterSayHelloServerStreamServer) Send(m *HelloReply) error {
 
 type GreeterServer interface {
 	SayHello(context.Context, *HelloRequest) (*HelloReply, error)
+	SayError(context.Context, *HelloRequest) (*HelloReply, error)
 	SayHelloStream(GreeterSayHelloStreamServer) error
 	SayHelloClientStream(GreeterSayHelloClientStreamServer) error
 	SayHelloServerStream(*HelloRequest, GreeterSayHelloServerStreamServer) error
@@ -336,6 +365,10 @@ func (UnimplementedGreeterServer) SayHello(context.Context, *HelloRequest) (*Hel
 	return nil, status.Errorf(code.Code_UNAUTHENTICATED, "method SayHello not implemented")
 }
 
+func (UnimplementedGreeterServer) SayError(context.Context, *HelloRequest) (*HelloReply, error) {
+	return nil, status.Errorf(code.Code_UNAUTHENTICATED, "method SayError not implemented")
+}
+
 func (UnimplementedGreeterServer) SayHelloStream(GreeterSayHelloStreamServer) error {
 	return status.Errorf(code.Code_UNAUTHENTICATED, "method SayHelloStream not implemented")
 }
@@ -357,6 +390,10 @@ var GreeterServiceDesc = server.ServiceDesc{
 		{
 			MethodName: "SayHello",
 			Handler:    _Greeter_SayHello_Handler,
+		},
+		{
+			MethodName: "SayError",
+			Handler:    _Greeter_SayError_Handler,
 		},
 	},
 	Streams: []stream.StreamDesc{

@@ -10,8 +10,8 @@ import (
 // is compatible with the yggdrasil package it is being compiled against.
 
 var Reason_code = map[int32]code.Code{
-	0: code.Code(0),
-	1: code.Code(5),
+	0: code.Code_OK,
+	1: code.Code_NOT_FOUND,
 }
 
 func (r Reason) Reason() string {

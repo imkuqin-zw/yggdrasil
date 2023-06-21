@@ -24,6 +24,8 @@ import (
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
+	"github.com/imkuqin-zw/yggdrasil/pkg/status"
+	"github.com/pkg/errors"
 )
 
 type GreeterImpl struct {
@@ -32,6 +34,10 @@ type GreeterImpl struct {
 
 func (g GreeterImpl) SayHello(_ context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
 	return &helloword.HelloReply{Message: request.Name}, nil
+}
+
+func (g GreeterImpl) SayError(_ context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+	return &helloword.HelloReply{Message: request.Name}, status.WithReason(errors.New("not found"), helloword.Reason_ERROR_USER_NOT_FOUND, nil)
 }
 
 func main() {

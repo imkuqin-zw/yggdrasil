@@ -11,5 +11,5 @@ enum Reason {
   option (yggdrasil.reason.default_reason) = 500;
   // Do not use this default value.
   ERROR_REASON_UNSPECIFIED = 0;
-  ERROR_USER_NOT_FOUND = 1[(yggdrasil.reason.code) = 5];
+  ERROR_USER_NOT_FOUND = 1[(yggdrasil.reason.code) = NOT_FOUND];
 }

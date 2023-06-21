@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/imkuqin-zw/yggdrasil"
 	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
@@ -24,6 +25,7 @@ import (
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
+	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 )
 
 func main() {
@@ -35,6 +37,10 @@ func main() {
 	_, err := client.SayHello(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
 	if err != nil {
 		logger.Fatal(err)
+	}
+	_, err = client.SayError(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
+	if err != nil {
+		fmt.Println(status.FromError(err).Reason().Reason)
 	}
 	logger.Info("call success")
 }

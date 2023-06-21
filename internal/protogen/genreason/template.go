@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"strings"
 	"text/template"
+
+	"google.golang.org/genproto/googleapis/rpc/code"
 )
 
 var tpl = `
@@ -26,7 +28,7 @@ var tpl = `
 {{range .Reason}}
 var {{.Name}}_code = map[int32]{{$codePkg}}Code{
 {{- range $reason, $code := .Codes}}
-	{{$reason}}: {{$codePkg}}Code({{$code}}),
+	{{$reason}}: {{$codePkg}}Code_{{$code}},
 {{- end}}
 }
 
@@ -52,7 +54,7 @@ type Reasons struct {
 
 type ReasonWrapper struct {
 	Name  string
-	Codes map[int32]uint32
+	Codes map[int32]code.Code
 }
 
 func (sd *Reasons) execute() string {

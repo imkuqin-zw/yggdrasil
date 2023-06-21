@@ -7,6 +7,8 @@ option go_package = "github.com/imkuqin-zw/yggdrasil/example/protogen/helloword;
 service Greeter {
   rpc SayHello (HelloRequest) returns (HelloReply) {
   }
+  rpc SayError (HelloRequest) returns (HelloReply) {
+  }
   rpc SayHelloStream (stream HelloRequest) returns (stream HelloReply) {
   }
   rpc SayHelloClientStream (stream HelloRequest) returns (HelloReply) {

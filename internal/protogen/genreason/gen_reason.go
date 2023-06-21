@@ -15,18 +15,16 @@
 package genrpc
 
 import (
-	"fmt"
-
 	error2 "github.com/imkuqin-zw/yggdrasil/proto/yggdrasil/reason"
 	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/protobuf/compiler/protogen"
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	eCodeMin = uint32(code.Code_OK)
-	eCodeMax = uint32(code.Code_DATA_LOSS)
-)
+//const (
+//	eCodeMin = code.Code_OK
+//	eCodeMax = code.Code_DATA_LOSS
+//)
 
 const (
 	codePackage = protogen.GoImportPath("google.golang.org/genproto/googleapis/rpc/code")
@@ -71,14 +69,10 @@ func genErrorsReason(enum *protogen.Enum, reasons *Reasons) {
 	if !proto.HasExtension(enum.Desc.Options(), error2.E_DefaultReason) {
 		return
 	}
-	rw := ReasonWrapper{Name: string(enum.Desc.Name()), Codes: map[int32]uint32{}}
+	rw := ReasonWrapper{Name: string(enum.Desc.Name()), Codes: map[int32]code.Code{}}
 	for _, value := range enum.Values {
 		errCode := proto.GetExtension(value.Desc.Options(), error2.E_Code)
-		eCode := errCode.(uint32)
-		if eCode < eCodeMin || eCode > eCodeMax {
-			panic(fmt.Sprintf("code of Enum '%s'.'%s' range must be between %d and %d",
-				string(enum.Desc.Name()), string(value.Desc.Name()), eCodeMin, eCodeMax))
-		}
+		eCode := errCode.(code.Code)
 		rw.Codes[int32(value.Desc.Number())] = eCode
 	}
 	reasons.Reason = append(reasons.Reason, rw)

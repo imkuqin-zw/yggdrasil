@@ -189,20 +189,12 @@ func (cc *clientConn) resetTransport() <-chan struct{} {
 		return ch
 	}
 	cc.mu.RUnlock()
-	//if cc.state.Load() != connStateClosed {
-	//	return
-	//}
 	cc.mu.Lock()
 	if cc.state != connStateClosed {
 		ch := cc.waitConnCh
 		cc.mu.Unlock()
 		return ch
 	}
-	//if cc.state.Load() != connStateClosed {
-	//	cc.mu.Unlock()
-	//	return
-	//}
-	//cc.state.Store(connStateConnecting)
 	cc.state = connStateConnecting
 	cc.waitConnCh = make(chan struct{})
 	ch := cc.waitConnCh
@@ -232,7 +224,7 @@ func (cc *clientConn) resetTransport() <-chan struct{} {
 			}
 			remote.Logger.ErrorFiled("fault to connect server", logger.Err(err))
 			retries++
-			if retries == 3 {
+			if retries == 1 {
 				cc.mu.Lock()
 				if cc.state == connStateConnecting {
 					close(cc.waitConnCh)

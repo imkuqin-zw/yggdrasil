@@ -281,59 +281,46 @@ func (c *client) waitForResolved(ctx context.Context) error {
 	}
 }
 
+func (c *client) newConnStream(ctx context.Context, desc *stream.StreamDesc, method string) (stream.ClientStream, error) {
+	snap := c.pickSnap
+	picker := snap.balancer.GetPicker()
+	r, err := picker.Next(balancer.RpcInfo{
+		Ctx:    ctx,
+		Method: method,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cli, ok := snap.remoteCli[r.Endpoint().GetAddress()]
+	if !ok || cli == nil {
+		return nil, status.Errorf(code.Code_UNAVAILABLE, "server cannot connect")
+	}
+	st, err := cli.NewStream(ctx, desc, method)
+	if err != nil {
+		if err == balancer.ErrNoAvailableInstance {
+			return nil, status.New(code.Code_UNAVAILABLE, err)
+		}
+		r.Report(err)
+		return nil, err
+	}
+	return &clientStream{
+		desc:         desc,
+		ClientStream: st,
+		report:       r.Report,
+	}, nil
+}
+
 func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method string) (stream.ClientStream, error) {
 	if err := c.waitForResolved(ctx); err != nil {
 		return nil, err
 	}
 	retries := 0
-	var st stream.ClientStream
 	for {
-		snap := c.pickSnap
-		picker := snap.balancer.GetPicker()
-		r, err := picker.Next(balancer.RpcInfo{
-			Ctx:    ctx,
-			Method: method,
-		})
+		st, err := c.newConnStream(ctx, desc, method)
 		if err == nil {
-			for {
-				if c.snapVersion.Load() > snap.version {
-					break
-				}
-				cli := snap.remoteCli[r.Endpoint().GetAddress()]
-				if cli == nil {
-					continue
-				}
-				st, err = cli.NewStream(ctx, desc, method)
-				if err == nil {
-					st = &clientStream{
-						desc:         desc,
-						ClientStream: st,
-						report:       r.Report,
-					}
-					return st, nil
-				}
-				if err == balancer.ErrNoAvailableInstance {
-					return nil, status.New(code.Code_UNAVAILABLE, err)
-				}
-				logger.Errorf("fault to new stream", logger.Err(err))
-				r.Report(err)
-				if retries > 3 {
-					return nil, err
-				}
-				bc := c.transportBackoff.Backoff(retries)
-				t := time.NewTimer(bc)
-				select {
-				case <-c.ctx.Done():
-					return nil, ErrClientClosing
-				case <-ctx.Done():
-					return nil, ctx.Err()
-				case <-t.C:
-					retries++
-				}
-			}
-			continue
+			return st, nil
 		}
-		logger.Errorf("fault to pick instance", logger.Err(err))
+		logger.ErrorFiled("fault to new stream", logger.Err(err))
 		if retries > 3 {
 			return nil, err
 		}
@@ -354,7 +341,7 @@ func (c *client) invoke(ctx context.Context, method string, args, reply interfac
 	if err != nil {
 		return err
 	}
-	if err := cs.SendMsg(args); err != nil {
+	if err = cs.SendMsg(args); err != nil {
 		return err
 	}
 	return cs.RecvMsg(reply)

@@ -47,7 +47,7 @@ type Server struct {
 func NewServer() *Server {
 	cfg := &Config{}
 	if err := config.Get(config.KeyGovernor).Scan(cfg); err != nil {
-		logger.FatalFiled("fault to get governor config", logger.Err(err))
+		logger.FatalField("fault to get governor config", logger.Err(err))
 	}
 	cfg.SetDefault()
 	var listener, err = net.Listen("tcp4", cfg.Address())
@@ -73,7 +73,7 @@ func NewServer() *Server {
 // Serve ..
 func (s *Server) Serve() error {
 	info := s.Info()
-	logger.InfoFiled("governor start", logger.String("endpoint", fmt.Sprintf("%s://%s", info.Scheme, info.Address)))
+	logger.InfoField("governor start", logger.String("endpoint", fmt.Sprintf("%s://%s", info.Scheme, info.Address)))
 	err := s.Server.Serve(s.listener)
 	if err == http.ErrServerClosed {
 		return nil

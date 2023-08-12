@@ -25,7 +25,7 @@ import (
 	"io"
 )
 
-// ReflectedEncoder serializes logger fields that can't be serialized with Zap's
+// ReflectedEncoder serializes global fields that can't be serialized with Zap's
 // JSON encoder. These have the ReflectType field type.
 // Use EncoderConfig.NewReflectedEncoder to set this.
 type ReflectedEncoder interface {

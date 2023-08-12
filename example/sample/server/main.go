@@ -42,11 +42,11 @@ func (g GreeterImpl) SayError(_ context.Context, request *helloword.HelloRequest
 
 func main() {
 	if err := config.LoadSource(file.NewSource("./config.yaml", false)); err != nil {
-		logger.FatalFiled("fault to load config file", logger.Err(err))
+		logger.FatalField("fault to load config file", logger.Err(err))
 	}
 	yggdrasil.Init("github.com.imkuqin_zw.yggdrasil.example.sample")
 	if err := yggdrasil.Serve(yggdrasil.WithServiceDesc(&helloword.GreeterServiceDesc, GreeterImpl{})); err != nil {
-		logger.FatalFiled("the application was ended forcefully ", logger.Err(err))
+		logger.FatalField("the application was ended forcefully ", logger.Err(err))
 		logger.Fatal(err)
 	}
 }

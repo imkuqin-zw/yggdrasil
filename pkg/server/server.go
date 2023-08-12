@@ -120,7 +120,7 @@ func (s *server) Stop() error {
 	for _, item := range s.servers {
 		if err := item.Stop(); err != nil {
 			errs = append(errs, err)
-			logger.ErrorFiled("fault to stop server",
+			logger.ErrorField("fault to stop server",
 				logger.String("protocol", item.Info().Protocol), logger.Err(err))
 		}
 	}
@@ -157,12 +157,12 @@ func (s *server) Serve() (<-chan struct{}, <-chan struct{}, <-chan error) {
 			g.Go(func() error {
 				ch, err := svr.Serve()
 				if err != nil {
-					logger.ErrorFiled("the server was ended forcefully",
+					logger.ErrorField("the server was ended forcefully",
 						logger.String("protocol", svr.Info().Protocol), logger.Err(err))
 					return err
 				}
 				info := svr.Info()
-				logger.InfoFiled("server start", logger.String("endpoint",
+				logger.InfoField("server start", logger.String("endpoint",
 					fmt.Sprintf("%s://%s", info.Protocol, info.Address)))
 				if initNum.Add(1) == serviceNum {
 					close(initFinishCh)
@@ -205,12 +205,12 @@ func (s *server) initRemoteServer() {
 	for _, protocol := range protocols {
 		builder := remote.GetServerBuilder(protocol)
 		if builder == nil {
-			logger.FatalFiled("not found server builder",
+			logger.FatalField("not found server builder",
 				logger.String("protocol", protocol))
 		}
 		svr, err := builder(s.handle)
 		if err != nil {
-			logger.FatalFiled("fault to new remote server",
+			logger.FatalField("fault to new remote server",
 				logger.String("protocol", protocol),
 				logger.Err(err))
 		}

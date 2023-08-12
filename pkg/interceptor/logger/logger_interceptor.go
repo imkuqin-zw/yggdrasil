@@ -47,7 +47,7 @@ var name = "logger"
 func newUnaryServerInterceptor() interceptor.UnaryServerInterceptor {
 	cfg := Config{}
 	if err := config.Get(fmt.Sprintf(config.KeyInterceptorCfg, name)).Scan(&cfg); err != nil {
-		logger.ErrorFiled("fault to load logger config", logger.Err(errors.WithStack(err)))
+		logger.ErrorField("fault to load logger config", logger.Err(errors.WithStack(err)))
 	}
 	return func(ctx context.Context, req interface{}, info *interceptor.UnaryServerInfo, handler interceptor.UnaryHandler) (resp interface{}, err error) {
 		var (
@@ -89,15 +89,15 @@ func newUnaryServerInterceptor() interceptor.UnaryServerInterceptor {
 			if err != nil {
 				fields = append(fields, logger.Err(err))
 				if st.HttpCode() >= http.StatusInternalServerError {
-					logger.ErrorFiled("access", fields...)
+					logger.ErrorField("access", fields...)
 				} else {
-					logger.WarnFiled("access", fields...)
+					logger.WarnField("access", fields...)
 				}
 			} else {
 				if cfg.PrintReqAndRes {
 					fields = append(fields, logger.Reflect("res", resp))
 				}
-				logger.InfoFiled("access", fields...)
+				logger.InfoField("access", fields...)
 			}
 		}()
 		return handler(ctx, req)
@@ -138,12 +138,12 @@ func newStreamServerInterceptor() interceptor.StreamServerInterceptor {
 			if err != nil {
 				fields = append(fields, logger.Err(err))
 				if st.HttpCode() >= http.StatusInternalServerError {
-					logger.ErrorFiled("access", fields...)
+					logger.ErrorField("access", fields...)
 				} else {
-					logger.WarnFiled("access", fields...)
+					logger.WarnField("access", fields...)
 				}
 			} else {
-				logger.InfoFiled("access", fields...)
+				logger.InfoField("access", fields...)
 			}
 		}()
 		return handler(srv, stream)
@@ -156,7 +156,7 @@ func newUnaryClientInterceptor(serverName string) interceptor.UnaryClientInterce
 		fmt.Sprintf(config.KeyInterceptorCfg, name),
 		fmt.Sprintf(config.KeyClientIntCfg, serverName, name),
 	).Scan(cfg); err != nil {
-		logger.ErrorFiled("fault to load logger config", logger.Err(errors.WithStack(err)))
+		logger.ErrorField("fault to load logger config", logger.Err(errors.WithStack(err)))
 	}
 	return func(ctx context.Context, method string, req, reply interface{}, invoker interceptor.UnaryInvoker) (err error) {
 		startTime := time.Now()
@@ -195,18 +195,18 @@ func newUnaryClientInterceptor(serverName string) interceptor.UnaryClientInterce
 			if err != nil {
 				fields = append(fields, logger.Err(err))
 				if st.HttpCode() >= http.StatusInternalServerError {
-					logger.ErrorFiled("access", fields...)
+					logger.ErrorField("access", fields...)
 				} else {
-					logger.WarnFiled("access", fields...)
+					logger.WarnField("access", fields...)
 				}
 			} else {
 				if cfg.PrintReqAndRes {
 					fields = append(fields, logger.Reflect("res", reply))
 				}
 				if cfg.SlowThreshold <= cost {
-					logger.WarnFiled("access", fields...)
+					logger.WarnField("access", fields...)
 				} else {
-					logger.InfoFiled("access", fields...)
+					logger.InfoField("access", fields...)
 				}
 			}
 
@@ -248,12 +248,12 @@ func newStreamClientInterceptor(string) interceptor.StreamClientInterceptor {
 			if err != nil {
 				fields = append(fields, logger.Err(err))
 				if st.HttpCode() >= http.StatusInternalServerError {
-					logger.ErrorFiled("access", fields...)
+					logger.ErrorField("access", fields...)
 				} else {
-					logger.WarnFiled("access", fields...)
+					logger.WarnField("access", fields...)
 				}
 			} else {
-				logger.InfoFiled("access", fields...)
+				logger.InfoField("access", fields...)
 			}
 		}()
 		return streamer(ctx, desc, method)

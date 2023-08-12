@@ -46,7 +46,7 @@ func NewServer() server.Server {
 func NewClient(name string) client.Client {
 	cli, err := client.NewClient(context.Background(), name)
 	if err != nil {
-		logger.FatalFiled("fault to new client", logger.String("name", name), logger.Err(err))
+		logger.FatalField("fault to new client", logger.String("name", name), logger.Err(err))
 	}
 	return cli
 }
@@ -89,7 +89,7 @@ func Run(appName string, ops ...Option) error {
 
 func Stop() error {
 	if err := app.Stop(); err != nil {
-		logger.ErrorFiled("fault to stop yggdrasil application", logger.Err(err))
+		logger.ErrorField("fault to stop yggdrasil application", logger.Err(err))
 		return err
 	}
 	return nil
@@ -102,7 +102,7 @@ func initRegistry(opts *options) {
 	}
 	f := registry.GetBuilder(name)
 	if f == nil {
-		logger.WarnFiled("not found registry", logger.String("name", name))
+		logger.WarnField("not found registry", logger.String("name", name))
 		return
 	}
 	_ = WithRegistry(f())(opts)
@@ -114,56 +114,71 @@ func initTracer() {
 		if constructor != nil {
 			otel.SetTracerProvider(constructor(pkg.Name()))
 		} else {
-			logger.ErrorFiled("not found tracer provider", logger.String("name", tracerName))
+			logger.ErrorField("not found tracer provider", logger.String("name", tracerName))
 		}
 	}
 }
 
 func initInstanceInfo(appName string) {
 	if err := config.Set(config.KeyAppName, appName); err != nil {
-		logger.FatalFiled("fault to set application name", logger.Err(err))
+		logger.FatalField("fault to set application name", logger.Err(err))
 	}
 	pkg.InitInstanceInfo()
 }
 
 func initLogger() {
-	logName := config.GetString(config.KeyLoggerName, "std")
-	lv := config.GetBytes(config.KeyLoggerLevel, []byte("debug"))
-	if logName == "std" {
-		var level logger.Level
-		if err := level.UnmarshalText(lv); err != nil {
-			logger.FatalFiled("fault to unmarshal std logger level", logger.Err(err))
-		}
-		logger.SetLevel(level)
-		if config.GetBool("stdLogger.openMsgFormat", false) {
-			if lg, ok := logger.RawLogger().(*logger.StdLogger); ok {
-				lg.OpenMsgFormat()
-			}
-		}
-	} else {
-		lg := logger.GetLogger(logName)
-		logger.SetLogger(lg)
+	var lv logger.Level
+	if err := lv.UnmarshalText(config.GetBytes(config.KeyLoggerLevel, []byte("debug"))); err != nil {
+		logger.FatalField("fault to unmarshal global logger level", logger.Err(err))
 	}
+	logger.SetLevel(lv)
 	timeEncoder := config.GetString(config.KeyLoggerTimeEnc, "RFC3339")
 	if err := logger.SetTimeEncoderByName(timeEncoder); err != nil {
-		logger.FatalFiled("fault to set logger time encoder", logger.Err(err))
+		logger.FatalField("fault to set global logger time encoder", logger.Err(err))
 		return
 	}
 	durationEncoder := config.GetString(config.KeyLoggerDurEnc, "millis")
 	if err := logger.SetDurationEncoderByName(durationEncoder); err != nil {
-		logger.FatalFiled("fault to set logger duration encoder", logger.Err(err))
+		logger.FatalField("fault to set global logger duration encoder", logger.Err(err))
 		return
 	}
 	logger.SetStackPrintState(config.GetBool(config.KeyLoggerStack, false))
-
-	// init remote logger
-	remoteLgLv := config.GetBytes(config.KeyRemoteLgLevel, lv)
-	var remoteLv logger.Level
-	if err := remoteLv.UnmarshalText(remoteLgLv); err != nil {
-		logger.FatalFiled("fault to unmarshal remote logger level", logger.Err(err))
+	// set global logger writer
+	writer := config.GetString(config.KeyLoggerWriter, "golog")
+	if writer == "golog" {
+		writerCfg := &logger.WriterCfg{}
+		if err := config.Get("golog").Scan(writerCfg); err != nil {
+			logger.FatalField("fault to load golog writer config", logger.Err(err))
+			return
+		}
+		logger.SetWriter(logger.NewWriter(writerCfg))
+	} else {
+		logger.SetWriter(logger.GetWriter(writer))
 	}
-	remote.Logger = logger.Clone()
+
+	_ = config.AddWatcher(config.KeyLoggerLevel, func(event config.WatchEvent) {
+		var lv logger.Level
+		if err := lv.UnmarshalText(event.Value().Bytes([]byte("debug"))); err != nil {
+			logger.ErrorField("fault to unmarshal global logger level", logger.Err(err))
+			return
+		}
+		logger.SetLevel(lv)
+	})
+	// init remote logger
+	var remoteLv logger.Level
+	if err := remoteLv.UnmarshalText(config.GetBytes(config.KeyRemoteLgLevel, []byte("error"))); err != nil {
+		logger.FatalField("fault to unmarshal remote logger level", logger.Err(err))
+	}
+	remote.Logger = logger.WithFields(logger.String("mod", "remote"))
 	remote.Logger.SetLevel(remoteLv)
+	_ = config.AddWatcher(config.KeyRemoteLgLevel, func(event config.WatchEvent) {
+		var lv logger.Level
+		if err := lv.UnmarshalText(event.Value().Bytes([]byte("debug"))); err != nil {
+			logger.ErrorField("fault to unmarshal remote logger level", logger.Err(err))
+			return
+		}
+		remote.Logger.SetLevel(lv)
+	})
 }
 
 func initGovernor(opts *options) {
@@ -184,7 +199,7 @@ func initServer(opts *options) {
 func applyOpt(opts *options, ops ...Option) {
 	for _, f := range ops {
 		if err := f(opts); err != nil {
-			logger.FatalFiled("fault to apply options", logger.Err(err))
+			logger.FatalField("fault to apply options", logger.Err(err))
 		}
 	}
 }

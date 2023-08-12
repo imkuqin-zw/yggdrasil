@@ -104,13 +104,13 @@ func newClient(ctx context.Context, serviceName string, endpoint resolver.Endpoi
 	commKey := fmt.Sprintf(config.KeyRemoteProto, "grpc")
 	clientKey := fmt.Sprintf(config.KeyClientProtocolCfg, serviceName, "grpc")
 	if err := config.GetMulti(commKey, clientKey).Scan(cfg); err != nil {
-		remote.Logger.ErrorFiled("fault to load client config", logger.Err(err), logger.String("protocol", "grpc"))
+		remote.Logger.ErrorField("fault to load client config", logger.Err(err), logger.String("protocol", "grpc"))
 	}
 	cfg.setDefault()
 	cfg.Transport.Authority = serviceName
 	addr, err := transport.NewNetAddr(cfg.Network, endpoint.GetAddress())
 	if err != nil {
-		remote.Logger.ErrorFiled("fault to new client", logger.Err(err))
+		remote.Logger.ErrorField("fault to new client", logger.Err(err))
 		return nil
 	}
 	cc := &clientConn{
@@ -222,7 +222,7 @@ func (cc *clientConn) resetTransport() <-chan struct{} {
 			if err == nil {
 				break
 			}
-			remote.Logger.ErrorFiled("fault to connect server", logger.Err(err))
+			remote.Logger.ErrorField("fault to connect server", logger.Err(err))
 			retries++
 			if retries == 1 {
 				cc.mu.Lock()

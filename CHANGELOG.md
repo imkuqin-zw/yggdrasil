@@ -44,7 +44,7 @@
 
 ### Bug Fixes
 
-- fix: 添加remote logger level key
+- fix: 添加remote global level key
 - fix: 修复config并发崩溃的问题
 - fix: 修复remote日志未跟随日志初始化的问题
 - fix: 修复日志error等级解析失败，默认日志打印格式兼容linux

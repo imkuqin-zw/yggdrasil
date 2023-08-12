@@ -12,10 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build windows
-
 package logger
 
-var (
-	lvFormat = "%-8s"
+import (
+	"log"
 )
+
+type Writer interface {
+	Write(lv Level, msg string, kvs ...interface{})
+}
+
+type WriterBuilder func() Writer
+
+var writerBuilder = make(map[string]WriterBuilder)
+
+func RegisterWriterBuilder(name string, f WriterBuilder) {
+	writerBuilder[name] = f
+}
+
+func GetWriterBuilder(name string) WriterBuilder {
+	f, _ := writerBuilder[name]
+	return f
+}
+
+func GetWriter(name string) Writer {
+	f := GetWriterBuilder(name)
+	if f == nil {
+		log.Fatalf("unknown global constructor, name: %s", name)
+	}
+	return f()
+}

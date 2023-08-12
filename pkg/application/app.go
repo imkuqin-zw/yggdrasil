@@ -182,7 +182,7 @@ func (app *Application) register() {
 	app.registryState = registryStateDone
 	app.mu.Unlock()
 	if err := app.registry.Register(context.TODO(), app); err != nil {
-		logger.ErrorFiled("fault to register application", logger.Err(err))
+		logger.ErrorField("fault to register application", logger.Err(err))
 		_ = app.Stop()
 		return
 	}
@@ -203,7 +203,7 @@ func (app *Application) deregister() {
 	ctx, cancel := context.WithTimeout(context.TODO(), defaultShutdownTimeout)
 	defer cancel()
 	if err := app.registry.Deregister(ctx, app); err != nil {
-		logger.ErrorFiled("fault to deregister application", logger.Err(err))
+		logger.ErrorField("fault to deregister application", logger.Err(err))
 	}
 }
 

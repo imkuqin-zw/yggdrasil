@@ -15,192 +15,176 @@
 package logger
 
 import (
-	"log"
-
-	"errors"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sync"
 )
 
-var (
-	helper     *Helper
-	enc        Encoder
-	printStack bool
-)
+var _fieldsPool = newFieldsPool()
 
-func init() {
-	lg := NewStdLogger(LvDebug, log.Default())
-	enc = &jsonEncoder{
-		EncodeTime:     RFC3339TimeEncoder,
-		EncodeDuration: MillisDurationEncoder,
-		spaced:         false,
-		buf:            Get(),
+type fieldsPool struct {
+	pool sync.Pool
+}
+
+func newFieldsPool() *fieldsPool {
+	return &fieldsPool{
+		pool: sync.Pool{
+			New: func() interface{} {
+				return make([]Field, 0, 10) // 10为数组的初始容量
+			},
+		},
 	}
-	printStack = true
-	helper = &Helper{lg}
 }
 
-var errUnmarshalNilLevel = errors.New("can't unmarshal a nil *Level")
-
-const (
-	LvDebug Level = iota - 1
-	LvInfo
-	LvWarn
-	LvError
-	LvFault
-)
-
-type LoggerConstructor func() Logger
-
-func SetLogger(logger Logger) {
-	helper.lg = logger
+func (ap *fieldsPool) Get() []Field {
+	return ap.pool.Get().([]Field)
 }
 
-func SetDurationEncoder(de DurationEncoder) {
-	enc.SetDurationEncoder(de)
+func (ap *fieldsPool) Put(arr []Field) {
+	arr = arr[:0] // 重置切片长度
+	ap.pool.Put(arr)
 }
 
-func SetTimeEncoder(te TimeEncoder) {
-	enc.SetTimeEncoder(te)
+type Logger struct {
+	lv     Level
+	writer Writer
+	fields []Field
 }
 
-func SetDurationEncoderByName(name string) error {
-	var de DurationEncoder
-	switch name {
-	case "seconds":
-		de = SecondsDurationEncoder
-	case "nanos":
-		de = NanosDurationEncoder
-	case "millis":
-		de = MillisDurationEncoder
-	case "string":
-		de = StringDurationEncoder
-	default:
-		return errors.New("unknown time encoder")
+func (l *Logger) Debug(args ...interface{}) {
+	l.out(LvDebug, "", args)
+}
+
+func (l *Logger) Info(args ...interface{}) {
+	l.out(LvInfo, "", args)
+}
+
+func (l *Logger) Warn(args ...interface{}) {
+	l.out(LvWarn, "", args)
+}
+
+func (l *Logger) Error(args ...interface{}) {
+	l.out(LvError, "", args)
+}
+
+func (l *Logger) Fatal(args ...interface{}) {
+	l.out(LvFault, "", args)
+	os.Exit(1)
+}
+
+func (l *Logger) Debugf(format string, args ...interface{}) {
+	l.out(LvDebug, format, args)
+}
+
+func (l *Logger) Infof(format string, args ...interface{}) {
+	l.out(LvInfo, format, args)
+}
+
+func (l *Logger) Warnf(format string, args ...interface{}) {
+	l.out(LvWarn, format, args)
+}
+
+func (l *Logger) Errorf(format string, args ...interface{}) {
+	l.out(LvError, format, args)
+}
+
+func (l *Logger) Fatalf(format string, args ...interface{}) {
+	l.out(LvFault, format, args)
+	os.Exit(1)
+}
+
+func (l *Logger) DebugField(msg string, fields ...Field) {
+	l.out(LvDebug, msg, nil, fields...)
+}
+
+func (l *Logger) InfoField(msg string, fields ...Field) {
+	l.out(LvInfo, msg, nil, fields...)
+}
+
+func (l *Logger) WarnField(msg string, fields ...Field) {
+	l.out(LvWarn, msg, nil, fields...)
+}
+
+func (l *Logger) ErrorField(msg string, fields ...Field) {
+	l.out(LvError, msg, nil, fields...)
+	l.printStack()
+}
+
+func (l *Logger) FatalField(msg string, fields ...Field) {
+	l.out(LvFault, msg, nil, fields...)
+	l.printStack()
+	os.Exit(1)
+}
+
+func (l *Logger) SetLevel(level Level) {
+	l.lv = level
+}
+
+func (l *Logger) GetLevel() Level {
+	return l.lv
+}
+
+func (l *Logger) Enable(level Level) bool {
+	return l.lv <= level
+}
+
+func (l *Logger) SetWriter(w Writer) {
+	l.writer = w
+}
+
+func (l *Logger) Clone() *Logger {
+	newHelper := *l
+	fields := make([]Field, len(l.fields))
+	copy(fields, l.fields)
+	return &newHelper
+}
+
+func (l *Logger) WithFields(fields ...Field) *Logger {
+	newHelper := l.Clone()
+	newHelper.fields = append(newHelper.fields, fields...)
+	return newHelper
+}
+
+func (l *Logger) mergeFields(fields ...Field) []Field {
+	final := _fieldsPool.Get()
+	return append(append(final, l.fields...), fields...)
+}
+
+func (l *Logger) out(lv Level, format string, args []interface{}, fields ...Field) {
+	if !l.Enable(lv) {
+		return
 	}
-	enc.SetDurationEncoder(de)
-	return nil
-}
-
-func SetTimeEncoderByName(name string) error {
-	var te TimeEncoder
-	switch name {
-	case "RFC3339":
-		te = RFC3339TimeEncoder
-	case "RFC3339Nano":
-		te = RFC3339NanoTimeEncoder
-	case "ISO8601":
-		te = ISO8601TimeEncoder
-	case "epoch":
-		te = EpochTimeEncoder
-	case "epochNanos":
-		te = EpochNanosTimeEncoder
-	case "epochMillis":
-		te = EpochMillisTimeEncoder
-	default:
-		return errors.New("unknown time encoder")
+	msgBuf := Get()
+	defer msgBuf.Free()
+	if len(format) > 0 {
+		_, _ = fmt.Fprintf(msgBuf, format, args...)
+	} else {
+		_, _ = fmt.Fprint(msgBuf, args...)
 	}
-	enc.SetTimeEncoder(te)
-	return nil
-}
 
-func SetStackPrintState(b bool) {
-	printStack = b
-}
-
-var loggerConstructors = make(map[string]LoggerConstructor)
-
-func RegisterConstructor(name string, f LoggerConstructor) {
-	loggerConstructors[name] = f
-}
-
-func GetConstructor(name string) LoggerConstructor {
-	f, _ := loggerConstructors[name]
-	return f
-}
-
-func GetLogger(name string) Logger {
-	f := GetConstructor(name)
-	if f == nil {
-		log.Fatalf("unknown logger constructor, name: %s", name)
+	if len(l.fields) > 0 {
+		fields = l.mergeFields(fields...)
+		defer _fieldsPool.Put(fields)
 	}
-	return f()
+	if len(fields) == 0 {
+		l.writer.Write(lv, msgBuf.String())
+		return
+	}
+	fieldsBuf, _ := enc.Encode(fields)
+	defer fieldsBuf.Free()
+	l.writer.Write(lv, msgBuf.String(), "ext", json.RawMessage(fieldsBuf.Bytes()))
 }
 
-func Debug(args ...interface{}) {
-	helper.Debug(args...)
-}
-
-func Info(args ...interface{}) {
-	helper.Info(args...)
-}
-
-func Warn(args ...interface{}) {
-	helper.Warn(args...)
-}
-
-func Error(args ...interface{}) {
-	helper.Error(args...)
-}
-
-func Fatal(args ...interface{}) {
-	helper.Fatal(args...)
-}
-
-func Debugf(fmt string, args ...interface{}) {
-	helper.Debugf(fmt, args)
-}
-
-func Infof(fmt string, args ...interface{}) {
-	helper.Infof(fmt, args)
-}
-
-func Warnf(fmt string, args ...interface{}) {
-	helper.Warnf(fmt, args)
-}
-
-func Errorf(fmt string, args ...interface{}) {
-	helper.Errorf(fmt, args)
-}
-
-func Fatalf(fmt string, args ...interface{}) {
-	helper.Fatalf(fmt, args)
-}
-
-func DebugFiled(msg string, fields ...Field) {
-	helper.DebugFiled(msg, fields...)
-}
-
-func InfoFiled(msg string, fields ...Field) {
-	helper.InfoFiled(msg, fields...)
-}
-
-func WarnFiled(msg string, fields ...Field) {
-	helper.WarnFiled(msg, fields...)
-}
-
-func ErrorFiled(msg string, fields ...Field) {
-	helper.ErrorFiled(msg, fields...)
-}
-
-func FatalFiled(msg string, fields ...Field) {
-	helper.FatalFiled(msg, fields...)
-}
-
-func Clone() *Helper {
-	return helper.Clone()
-}
-
-func RawLogger() Logger {
-	return helper.lg
-}
-
-func SetLevel(level Level) {
-	helper.SetLevel(level)
-}
-
-func GetLevel() Level {
-	return helper.GetLevel()
-}
-
-func Enable(level Level) bool {
-	return helper.Enable(level)
+func (l *Logger) printStack(fields ...Field) {
+	if printStack {
+		for _, item := range fields {
+			if item.Type == ErrorType {
+				if formatter, ok := item.Interface.(fmt.Formatter); ok {
+					_, _ = fmt.Fprintf(os.Stderr, "%+v\n", formatter)
+				}
+				return
+			}
+		}
+	}
 }

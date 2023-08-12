@@ -336,7 +336,7 @@ func (enc *jsonEncoder) AppendUintptr(v uintptr)        { enc.AppendUint64(uint6
 
 func (enc *jsonEncoder) Clone() Encoder {
 	clone := enc.clone()
-	clone.buf.Write(enc.buf.Bytes())
+	_, _ = clone.buf.Write(enc.buf.Bytes())
 	return clone
 }
 

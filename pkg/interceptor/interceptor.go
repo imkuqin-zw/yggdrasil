@@ -178,7 +178,7 @@ func ChainUnaryClientInterceptors(serviceName string, names []string) UnaryClien
 		if f := getUnaryClientIntBuilder(item); f != nil {
 			interceptors = append(interceptors, f(serviceName))
 		} else {
-			logger.WarnFiled("not found unary client interceptor", logger.String("name", item))
+			logger.WarnField("not found unary client interceptor", logger.String("name", item))
 		}
 	}
 	if len(interceptors) == 0 {
@@ -210,7 +210,7 @@ func ChainStreamClientInterceptors(serviceName string, names []string) StreamCli
 		if f := getStreamClientIntBuilder(item); f != nil {
 			interceptors = append(interceptors, f(serviceName))
 		} else {
-			logger.WarnFiled("not found stream client interceptor", logger.String("name", item))
+			logger.WarnField("not found stream client interceptor", logger.String("name", item))
 		}
 	}
 	if len(interceptors) == 0 {
@@ -241,7 +241,7 @@ func ChainUnaryServerInterceptors(names []string) UnaryServerInterceptor {
 	for _, item := range names {
 		builder := getUnaryServerIntBuilder(item)
 		if builder == nil {
-			logger.WarnFiled("not found unary server interceptor", logger.String("name", item))
+			logger.WarnField("not found unary server interceptor", logger.String("name", item))
 			continue
 		}
 		interceptors = append(interceptors, builder())
@@ -275,7 +275,7 @@ func ChainStreamServerInterceptors(names []string) StreamServerInterceptor {
 	for _, item := range names {
 		builder := getStreamServerIntBuilder(item)
 		if builder == nil {
-			logger.WarnFiled("not found stream server interceptor", logger.String("name", item))
+			logger.WarnField("not found stream server interceptor", logger.String("name", item))
 			continue
 		}
 		interceptors = append(interceptors, builder())

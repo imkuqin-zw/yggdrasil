@@ -101,9 +101,9 @@ const (
 	InlineMarshalerType
 )
 
-// A Field is a marshaling operation used to add a key-value pair to a logger's
+// A Field is a marshaling operation used to add a key-value pair to a global's
 // context. Most fields are lazily marshaled, so it's inexpensive to add fields
-// to disabled debug-level logger statements.
+// to disabled debug-level global statements.
 type Field struct {
 	Key       string
 	Type      FieldType
@@ -252,7 +252,7 @@ func nilField(key string) Field { return Reflect(key, nil) }
 // Binary constructs a field that carries an opaque binary blob.
 //
 // Binary data is serialized in an encoding-appropriate format. For example,
-// zap's JSON encoder base64-encodes binary blobs. To logger UTF-8 encoded text,
+// zap's JSON encoder base64-encodes binary blobs. To global UTF-8 encoded text,
 // use ByteString.
 func Binary(key string, val []byte) Field {
 	return Field{Key: key, Type: BinaryType, Interface: val}
@@ -277,7 +277,7 @@ func Boolp(key string, val *bool) Field {
 }
 
 // ByteString constructs a field that carries UTF-8 encoded text as a []byte.
-// To logger opaque binary blobs (which aren't necessarily valid UTF-8), use
+// To global opaque binary blobs (which aren't necessarily valid UTF-8), use
 // Binary.
 func ByteString(key string, val []byte) Field {
 	return Field{Key: key, Type: ByteStringType, Interface: val}
@@ -521,12 +521,12 @@ func Uintptrp(key string, val *uintptr) Field {
 // allocation-heavy. Outside tests, Any is always a better choice.
 //
 // If encoding fails (e.g., trying to serialize a map[int]string to JSON), Reflect
-// includes the reason message in the final logger output.
+// includes the reason message in the final global output.
 func Reflect(key string, val interface{}) Field {
 	return Field{Key: key, Type: ReflectType, Interface: val}
 }
 
-// Namespace creates a named, isolated scope within the logger's context. All
+// Namespace creates a named, isolated scope within the global's context. All
 // subsequent fields will be added to the new namespace.
 //
 // This helps prevent key collisions when injecting loggers into sub-components

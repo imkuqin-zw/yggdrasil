@@ -200,7 +200,7 @@ func (c *config) watchSource(source source.Source) {
 				continue
 			}
 			if err := c.apply(); err != nil {
-				logger.ErrorFiled("fault to apply source data", logger.Err(err))
+				logger.ErrorField("fault to apply source data", logger.Err(err))
 			}
 		}
 	}

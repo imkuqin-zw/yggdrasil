@@ -32,7 +32,7 @@ import (
 // behavior.
 const DefaultLineEnding = "\n"
 
-// OmitKey defines the key to use when callers want to remove a key from logger output.
+// OmitKey defines the key to use when callers want to remove a key from global output.
 const OmitKey = ""
 
 // A TimeEncoder serializes a time.Time to a primitive type.
@@ -207,11 +207,11 @@ func (e *DurationEncoder) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// A NameEncoder serializes a period-separated logger name to a primitive
+// A NameEncoder serializes a period-separated global name to a primitive
 // type.
 type NameEncoder func(string, PrimitiveArrayEncoder)
 
-// FullNameEncoder serializes the logger name as-is.
+// FullNameEncoder serializes the global name as-is.
 func FullNameEncoder(loggerName string, enc PrimitiveArrayEncoder) {
 	enc.AppendString(loggerName)
 }
@@ -317,8 +317,8 @@ type PrimitiveArrayEncoder interface {
 	AppendUintptr(uintptr)
 }
 
-// Encoder is a format-agnostic interface for all logger entry marshalers. Since
-// logger encoders don't need to support the same wide range of use cases as
+// Encoder is a format-agnostic interface for all global entry marshalers. Since
+// global encoders don't need to support the same wide range of use cases as
 // general-purpose marshalers, it's possible to make them faster and
 // lower-allocation.
 //

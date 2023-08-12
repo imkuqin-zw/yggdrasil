@@ -187,7 +187,7 @@ func (c *client) handleConfig(value config.Value) {
 func (c *client) handlePickConfig(cfg config.Values) {
 	endpoints := make([]instance, 0)
 	if err := cfg.Get(config.KeySingleEndpoints).Scan(&endpoints); err != nil {
-		logger.ErrorFiled("fault to load client config", logger.Err(err))
+		logger.ErrorField("fault to load client config", logger.Err(err))
 		return
 	}
 	remoteCli := make(map[string]remote.Client, len(endpoints))
@@ -317,7 +317,7 @@ func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method 
 		if err == nil {
 			return st, nil
 		}
-		logger.ErrorFiled("fault to new stream", logger.Err(err))
+		logger.ErrorField("fault to new stream", logger.Err(err))
 		if err == balancer.ErrNoAvailableInstance {
 			return nil, status.New(code.Code_UNAVAILABLE, err)
 		}

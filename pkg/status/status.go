@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -98,7 +99,6 @@ func (e *Status) WithStack() {
 	} else if len(e.stacks) > 0 {
 		e.WithDetails(NewDebugInfo(e.Stacks(), e.Message()))
 	}
-
 }
 
 func (e *Status) Status() *status.Status {
@@ -109,14 +109,37 @@ func (e *Status) Status() *status.Status {
 }
 
 func (e *Status) Reason() *errdetails.ErrorInfo {
-	reason := &errdetails.ErrorInfo{}
-	for _, detail := range e.stu.Details {
-		if detail.MessageIs(reason) {
-			_ = detail.UnmarshalTo(reason)
-			return reason
+	if e != nil {
+		reason := &errdetails.ErrorInfo{}
+		for _, detail := range e.stu.Details {
+			if detail.MessageIs(reason) {
+				_ = detail.UnmarshalTo(reason)
+				return reason
+			}
 		}
 	}
 	return nil
+}
+
+func (e *Status) Format(s fmt.State, verb rune) {
+	switch verb {
+	case 'v':
+		if s.Flag('+') {
+			_, _ = io.WriteString(s, e.Message())
+			for i := 0; i < len(e.stacks); i += 2 {
+				_, _ = io.WriteString(s, "\n")
+				_, _ = io.WriteString(s, e.stacks[i])
+				_, _ = io.WriteString(s, "\n\t")
+				_, _ = io.WriteString(s, e.stacks[i+1])
+			}
+			return
+		}
+		fallthrough
+	case 's':
+		_, _ = io.WriteString(s, e.Message())
+	case 'q':
+		_, _ = fmt.Fprintf(s, "%q", e.Error())
+	}
 }
 
 func stuCodeToHttpCode(stuCode code.Code) int32 {
@@ -199,6 +222,9 @@ func New(code code.Code, err error, details ...proto.Message) *Status {
 	} else {
 		selfErr.stu.Message = err.Error()
 		selfErr.stacks = strings.Split(strings.ReplaceAll(fmt.Sprintf("%+v", err), "\t", ""), "\n")
+		if len(selfErr.stacks) > 0 {
+			selfErr.stacks = selfErr.stacks[1:]
+		}
 	}
 	for _, detail := range details {
 		if detail.ProtoReflect().IsValid() {
@@ -224,28 +250,55 @@ func Errorf(code code.Code, msg string, details ...proto.Message) *Status {
 	return selfErr
 }
 
+func FromReason(err error, reason Reason, metadata map[string]string) *Status {
+	e := FromErrorCode(err, reason.Code())
+	if e == nil {
+		return nil
+	}
+	e.WithDetails(NewReason(reason, metadata))
+	return e
+}
+
+func WithMessage(err error, ctx context.Context, msg Message) *Status {
+	e := FromError(err)
+	if e == nil {
+		return nil
+	}
+	e.WithDetails(NewLocalizedMsg(ctx, msg))
+	return e
+}
+
+func FromHttpCode(httpCode int32, err error, details ...proto.Message) *Status {
+	return New(httpCodeToStuCode(httpCode), err, details...)
+}
+
+func coverError(err error) (*Status, bool) {
+	if err == nil {
+		return nil, true
+	}
+	s, ok := errors.Unwrap(err).(*Status)
+	if ok {
+		return s, true
+	}
+	return nil, false
+}
+
 func FromError(err error) *Status {
 	return FromErrorCode(err, code.Code_UNKNOWN)
 }
 
 func CoverError(err error) (*Status, bool) {
-	if err == nil {
-		return nil, true
-	}
-	s, ok := err.(*Status)
+	st, ok := coverError(err)
 	if ok {
-		return s, true
+		return st, ok
 	}
-	return FromErrorCode(err, code.Code_UNKNOWN), false
+	return New(code.Code_UNKNOWN, err), false
 }
 
 func FromErrorCode(err error, code2 code.Code) *Status {
-	if err == nil {
-		return nil
-	}
-	e, ok := err.(*Status)
+	st, ok := coverError(err)
 	if ok {
-		return e
+		return st
 	}
 	return New(code2, err)
 }
@@ -267,34 +320,11 @@ func FromContextError(err error) *Status {
 }
 
 func FromProto(stu *status.Status) *Status {
-	return &Status{
-		stu: stu,
-	}
-}
-
-func WithReason(err error, reason Reason, metadata map[string]string) *Status {
-	e := FromErrorCode(err, reason.Code())
-	if e == nil {
-		return nil
-	}
-	e.WithDetails(NewReason(reason, metadata))
-	return e
-}
-
-func WithMessage(err error, ctx context.Context, msg Message) *Status {
-	e := FromError(err)
-	if e == nil {
-		return nil
-	}
-	e.WithDetails(NewLocalizedMsg(ctx, msg))
-	return e
+	return &Status{stu: stu}
 }
 
 func IsReason(err error, targets ...Reason) bool {
-	if err == nil {
-		return false
-	}
-	e, ok := err.(*Status)
+	e, ok := coverError(err)
 	if !ok {
 		return false
 	}
@@ -303,10 +333,18 @@ func IsReason(err error, targets ...Reason) bool {
 		return false
 	}
 	for _, target := range targets {
-		if src.Reason == target.Reason() && src.Domain != target.Domain() {
+		if src.Reason == target.Reason() && src.Domain == target.Domain() {
 			return true
 		}
 	}
 
 	return false
+}
+
+func IsCode(err error, code2 code.Code) bool {
+	e, ok := coverError(err)
+	if !ok {
+		return false
+	}
+	return e.Code() == int32(code2)
 }

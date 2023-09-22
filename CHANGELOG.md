@@ -1,3 +1,16 @@
+# 1.2.1 (2023/09/22)
+
+### Features
+
+- refactor: 重构日志库
+- docs: CHANGELOG.md
+
+### Bug Fixes
+
+- fix: 修改status类型判断问题
+- fix: 添加公用方法并修改日志
+- fix: 修改status判断Reason错误，并优化代码
+
 # 1.1.9 (2023/06/21)
 
 ### Features
@@ -44,7 +57,7 @@
 
 ### Bug Fixes
 
-- fix: 添加remote global level key
+- fix: 添加remote logger level key
 - fix: 修复config并发崩溃的问题
 - fix: 修复remote日志未跟随日志初始化的问题
 - fix: 修复日志error等级解析失败，默认日志打印格式兼容linux

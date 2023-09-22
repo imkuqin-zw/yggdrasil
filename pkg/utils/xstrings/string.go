@@ -165,3 +165,10 @@ func HasPrefix(key, pre, delimiter string) bool {
 	}
 	return true
 }
+
+// FullMatchWithRegex returns whether the full string matches the regex provided.
+func FullMatchWithRegex(re *regexp.Regexp, string string) bool {
+	re.Longest()
+	rem := re.FindString(string)
+	return len(rem) == len(string)
+}

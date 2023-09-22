@@ -25,17 +25,16 @@ import (
 	"time"
 
 	"github.com/imkuqin-zw/yggdrasil/internal/backoff"
+	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport"
 	"github.com/imkuqin-zw/yggdrasil/pkg/resolver"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xsync/event"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/config"
-	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xsync"
 	"google.golang.org/genproto/googleapis/rpc/code"
 )
 
@@ -88,7 +87,7 @@ type clientConn struct {
 	cancel      context.CancelFunc
 	mu          sync.RWMutex
 	cfg         *Config
-	closeEvent  *event.Event
+	closeEvent  *xsync.Event
 	state       int32
 	transport   transport.ClientTransport
 	waitConnCh  chan struct{}
@@ -118,7 +117,7 @@ func newClient(ctx context.Context, serviceName string, endpoint resolver.Endpoi
 		endpoint:    endpoint,
 		serviceName: serviceName,
 		addr:        addr,
-		closeEvent:  event.NewEvent(),
+		closeEvent:  xsync.NewEvent(),
 	}
 	cc.ctx, cc.cancel = context.WithCancel(ctx)
 	if cfg.BackOffMaxDelay == 0 {
@@ -133,8 +132,8 @@ func newClient(ctx context.Context, serviceName string, endpoint resolver.Endpoi
 }
 
 func (cc *clientConn) connect(opts transport.ConnectOptions, connectDeadline time.Time) error {
-	prefaceReceived := event.NewEvent()
-	connClosed := event.NewEvent()
+	prefaceReceived := xsync.NewEvent()
+	connClosed := xsync.NewEvent()
 	onClose := func() {
 		if connClosed.Fire() {
 			cc.onClose()

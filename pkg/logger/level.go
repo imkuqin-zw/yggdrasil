@@ -65,6 +65,10 @@ func (l *Level) unmarshalText(text []byte) bool {
 	return true
 }
 
+func (l Level) Enable(level Level) bool {
+	return l <= level
+}
+
 const (
 	LvDebug Level = iota - 1
 	LvInfo

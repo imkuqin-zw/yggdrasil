@@ -47,9 +47,13 @@ func (ap *fieldsPool) Put(arr []Field) {
 }
 
 type Logger struct {
-	lv     Level
-	writer Writer
+	lv     *Level
+	writer *Writer
 	fields []Field
+}
+
+func NewLogger(lv Level, writer Writer) *Logger {
+	return &Logger{lv: &lv, writer: &writer}
 }
 
 func (l *Logger) Debug(args ...interface{}) {
@@ -118,32 +122,37 @@ func (l *Logger) FatalField(msg string, fields ...Field) {
 }
 
 func (l *Logger) SetLevel(level Level) {
-	l.lv = level
+	*l.lv = level
 }
 
 func (l *Logger) GetLevel() Level {
-	return l.lv
+	return *l.lv
 }
 
 func (l *Logger) Enable(level Level) bool {
-	return l.lv <= level
+	return l.lv.Enable(level)
 }
 
 func (l *Logger) SetWriter(w Writer) {
-	l.writer = w
+	*l.writer = w
 }
 
 func (l *Logger) Clone() *Logger {
 	newHelper := *l
+	lv := *l.lv
+	newHelper.lv = &lv
 	fields := make([]Field, len(l.fields))
 	copy(fields, l.fields)
 	return &newHelper
 }
 
 func (l *Logger) WithFields(fields ...Field) *Logger {
-	newHelper := l.Clone()
-	newHelper.fields = append(newHelper.fields, fields...)
-	return newHelper
+	newFields := make([]Field, len(l.fields)+len(fields))
+	copy(newFields, l.fields)
+	copy(newFields[len(l.fields):], fields)
+	newHelper := *l
+	newHelper.fields = newFields
+	return &newHelper
 }
 
 func (l *Logger) mergeFields(fields ...Field) []Field {
@@ -168,12 +177,12 @@ func (l *Logger) out(lv Level, format string, args []interface{}, fields ...Fiel
 		defer _fieldsPool.Put(fields)
 	}
 	if len(fields) == 0 {
-		l.writer.Write(lv, msgBuf.String())
+		(*l.writer).Write(lv, msgBuf.String())
 		return
 	}
 	fieldsBuf, _ := enc.Encode(fields)
 	defer fieldsBuf.Free()
-	l.writer.Write(lv, msgBuf.String(), "ext", json.RawMessage(fieldsBuf.Bytes()))
+	(*l.writer).Write(lv, msgBuf.String(), "ext", json.RawMessage(fieldsBuf.Bytes()))
 }
 
 func (l *Logger) printStack(fields ...Field) {

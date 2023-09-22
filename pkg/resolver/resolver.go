@@ -26,8 +26,8 @@ type Endpoint interface {
 }
 
 type Resolver interface {
-	AddWatch(serviceName string) error
-	DelWatch(serviceName string) error
+	AddWatch(string) error
+	DelWatch(string) error
 	Close() error
 	Name() string
 }

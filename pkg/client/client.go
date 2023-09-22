@@ -33,7 +33,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xarray"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xsync/event"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xsync"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/genproto/googleapis/rpc/code"
@@ -105,7 +105,7 @@ type client struct {
 	transportBackoff  backoff.Strategy
 	snapVersion       atomic.Int64
 	pickSnap          pickSnap
-	resolvedEvent     *event.Event
+	resolvedEvent     *xsync.Event
 	resolver          resolver.Resolver
 	balancer          balancer.Balancer
 	remoteCli         map[string]remote.Client
@@ -119,7 +119,7 @@ func NewClient(ctx context.Context, serviceName string) (Client, error) {
 		serviceName:   serviceName,
 		configChange:  make(chan config.WatchEvent, 1),
 		remoteCli:     map[string]remote.Client{},
-		resolvedEvent: event.NewEvent(),
+		resolvedEvent: xsync.NewEvent(),
 	}
 	bc := backoff.DefaultConfig
 	bc.BaseDelay = time.Millisecond * 50

@@ -31,7 +31,7 @@ func init() {
 		buf:            Get(),
 	}
 	printStack = true
-	global = &Logger{lv: LvDebug, writer: NewWriter(&WriterCfg{OpenMsgFormat: true})}
+	global = NewLogger(LvDebug, NewWriter(&WriterCfg{OpenMsgFormat: true}))
 }
 
 var errUnmarshalNilLevel = errors.New("can't unmarshal a nil *Level")

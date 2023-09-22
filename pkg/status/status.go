@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"strings"
 
+	errors2 "github.com/pkg/errors"
 	"google.golang.org/genproto/googleapis/rpc/code"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/genproto/googleapis/rpc/status"
@@ -276,7 +277,7 @@ func coverError(err error) (*Status, bool) {
 	if err == nil {
 		return nil, true
 	}
-	s, ok := errors.Unwrap(err).(*Status)
+	s, ok := errors2.Cause(err).(*Status)
 	if ok {
 		return s, true
 	}

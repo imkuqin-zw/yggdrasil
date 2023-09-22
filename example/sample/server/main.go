@@ -37,7 +37,7 @@ func (g GreeterImpl) SayHello(_ context.Context, request *helloword.HelloRequest
 }
 
 func (g GreeterImpl) SayError(_ context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
-	return &helloword.HelloReply{Message: request.Name}, status.WithReason(errors.New("not found"), helloword.Reason_ERROR_USER_NOT_FOUND, nil)
+	return &helloword.HelloReply{Message: request.Name}, status.FromReason(errors.New("not found"), helloword.Reason_ERROR_USER_NOT_FOUND, nil)
 }
 
 func main() {

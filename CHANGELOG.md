@@ -1,9 +1,15 @@
+# 1.2.2 (2024/01/28)
+
+### Features
+
+- feat: 简单模式添加Trailer和header功能
+- docs: CHANGELOG.md
+
 # 1.2.1 (2023/09/22)
 
 ### Features
 
 - refactor: 重构日志库
-- docs: CHANGELOG.md
 
 ### Bug Fixes
 

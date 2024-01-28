@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"reflect"
 	"strings"
 	"sync"
@@ -257,7 +258,14 @@ func (s *server) handle(ctx context.Context, sm string, ss stream.ServerStream) 
 	srv, knownService := s.services[service]
 	if knownService {
 		if md, ok := srv.Methods[method]; ok {
+			ctx = metadata.WithStreamContext(ctx)
 			reply, err := md.Handler(srv.ServiceImpl, ctx, ss.RecvMsg, s.unaryInterceptor)
+			if header, ok := metadata.FromHeaderCtx(ctx); ok {
+				_ = ss.SetHeader(header)
+			}
+			if trailer, ok := metadata.FromTrailerCtx(ctx); ok {
+				ss.SetTrailer(trailer)
+			}
 			return reply, false, err
 		}
 		if sd, ok := srv.Streams[method]; ok {

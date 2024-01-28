@@ -17,6 +17,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"io"
 	"strings"
 	"sync/atomic"
@@ -92,6 +93,14 @@ func (c *clientStream) SendMsg(m interface{}) error {
 
 func (c *clientStream) RecvMsg(m interface{}) error {
 	err := c.ClientStream.RecvMsg(m)
+	if !c.desc.ServerStreams {
+		if header, _ := c.Header(); header != nil {
+			_ = metadata.SetHeader(c.Context(), header)
+		}
+		if trailer := c.Trailer(); trailer != nil {
+			_ = metadata.SetTrailer(c.Context(), trailer)
+		}
+	}
 	if err != nil && err != io.EOF && !c.desc.ServerStreams {
 		c.report(err)
 	}
@@ -344,10 +353,12 @@ func (c *client) invoke(ctx context.Context, method string, args, reply interfac
 	if err = cs.SendMsg(args); err != nil {
 		return err
 	}
-	return cs.RecvMsg(reply)
+	err = cs.RecvMsg(reply)
+	return err
 }
 
 func (c *client) Invoke(ctx context.Context, method string, args, reply interface{}) error {
+	ctx = metadata.WithStreamContext(ctx)
 	return c.unaryInterceptor(ctx, method, args, reply, c.invoke)
 }
 

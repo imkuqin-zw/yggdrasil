@@ -9,7 +9,7 @@
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
+// See the License for the specific language govecrning permissions and
 // limitations under the License.
 
 package metadata
@@ -88,6 +88,9 @@ func FromTrailerCtx(ctx context.Context) (md MD, ok bool) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.trailer == nil {
+		return MD{}, false
+	}
 	return h.trailer.Copy(), true
 }
 
@@ -109,28 +112,8 @@ func FromHeaderCtx(ctx context.Context) (md MD, ok bool) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.header == nil {
+		return MD{}, false
+	}
 	return h.header.Copy(), true
-}
-
-func WithHeaderOptCtx(ctx context.Context) context.Context {
-	s, ok := ctx.Value(streamKey{}).(*stream)
-	if !ok {
-		return context.WithValue(ctx, streamKey{}, &stream{header: MD{}})
-	}
-	s.header = MD{}
-	return ctx
-}
-
-func WithTrailerOptCtx(ctx context.Context) context.Context {
-	s, ok := ctx.Value(streamKey{}).(*stream)
-	if !ok {
-		return context.WithValue(ctx, streamKey{}, &stream{trailer: MD{}})
-	}
-	s.trailer = MD{}
-	return ctx
-}
-
-type rawMD struct {
-	md    MD
-	added [][]string
 }

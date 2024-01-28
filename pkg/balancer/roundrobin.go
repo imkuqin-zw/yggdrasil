@@ -15,6 +15,7 @@
 package balancer
 
 import (
+	"context"
 	"sync/atomic"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
@@ -47,6 +48,7 @@ func (i *instance) GetMetadata() map[string]interface{} {
 }
 
 type pickResult struct {
+	ctx      context.Context
 	endpoint *instance
 }
 
@@ -63,13 +65,13 @@ type roundRobinPicker struct {
 	endpoint []*instance
 }
 
-func (r *roundRobinPicker) Next(RpcInfo) (PickResult, error) {
+func (r *roundRobinPicker) Next(ri RpcInfo) (PickResult, error) {
 	endpoints := r.endpoint
 	if len(endpoints) == 0 {
 		return nil, status.Errorf(code.Code_UNAVAILABLE, "not found endpoint")
 	}
 	idx := r.idx % int64(len(r.endpoint))
-	res := &pickResult{endpoint: r.endpoint[idx]}
+	res := &pickResult{endpoint: r.endpoint[idx], ctx: ri.Ctx}
 	r.idx++
 	return res, nil
 }

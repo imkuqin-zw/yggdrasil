@@ -17,13 +17,13 @@ package main
 import (
 	"context"
 	"fmt"
-
 	"github.com/imkuqin-zw/yggdrasil"
 	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 )
@@ -34,9 +34,16 @@ func main() {
 	}
 	yggdrasil.Init("github.com.imkuqin_zw.yggdrasil.example.sample.client")
 	client := helloword.NewGreeterClient(yggdrasil.NewClient("github.com.imkuqin_zw.yggdrasil.example.sample"))
-	_, err := client.SayHello(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
+	ctx := metadata.WithStreamContext(context.TODO())
+	_, err := client.SayHello(ctx, &helloword.HelloRequest{Name: "fdasf"})
 	if err != nil {
 		logger.Fatal(err)
+	}
+	if trailer, ok := metadata.FromTrailerCtx(ctx); ok {
+		fmt.Println(trailer)
+	}
+	if header, ok := metadata.FromHeaderCtx(ctx); ok {
+		fmt.Println(header)
 	}
 	_, err = client.SayError(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
 	if err != nil {

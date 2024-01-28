@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 
 	"github.com/imkuqin-zw/yggdrasil"
 	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
@@ -32,11 +33,15 @@ type GreeterImpl struct {
 	helloword.UnimplementedGreeterServer
 }
 
-func (g GreeterImpl) SayHello(_ context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+func (g GreeterImpl) SayHello(ctx context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+	_ = metadata.SetTrailer(ctx, metadata.Pairs("trailer", "test"))
+	_ = metadata.SetHeader(ctx, metadata.Pairs("header", "test"))
 	return &helloword.HelloReply{Message: request.Name}, nil
 }
 
-func (g GreeterImpl) SayError(_ context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+func (g GreeterImpl) SayError(ctx context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+	_ = metadata.SetTrailer(ctx, metadata.Pairs("trailer", "test"))
+	_ = metadata.SetHeader(ctx, metadata.Pairs("header", "test"))
 	return &helloword.HelloReply{Message: request.Name}, status.FromReason(errors.New("not found"), helloword.Reason_ERROR_USER_NOT_FOUND, nil)
 }
 

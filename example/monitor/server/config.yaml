@@ -1,0 +1,68 @@
+yggdrasil:
+  application:
+    namespace: "dev"
+  server:
+    protocol:
+      - "grpc"
+
+  remote:
+    protocol:
+      grpc:
+        address: "127.0.0.1:55879"
+    logger:
+      level: debug
+
+  interceptor:
+    unaryServer: "logger"
+    streamServer: "logger"
+    config:
+      logger:
+        printReqAndRes: true
+
+  stats:
+    server: "otel"
+    client: "otel"
+    config:
+      otel:
+        receivedEvent: true
+        sentEvent: true
+
+  tracer: "otlpgrpc"
+  meter: "otlpgrpc"
+  governor:
+    port: 30000
+
+otlp:
+  grpc:
+    endpoint: "127.0.0.1:4317"
+
+golog:
+  file:
+    enable: true
+    filename: "/tmp/monitor/server/out.log"
+
+gorm:
+  default:
+    driver: "mysql"
+    DSN: "root:123456@tcp(192.168.101.102:3306)/monitor_test?parseTime=True&loc=Local&charset=utf8mb4"
+    nameStrategy:
+      singularTable: true
+    plugins:
+      - "trace"
+      - "metrics"
+    trace:
+      excludeQueryVars: true
+
+redis:
+  default:
+    Universal:
+      addrs:
+        - "192.168.101.102:6379"
+    cluster: false
+    logger:
+      enable: true
+    metricsEnable: true
+    traceEnable: true
+
+
+

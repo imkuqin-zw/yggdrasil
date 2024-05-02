@@ -1,0 +1,35 @@
+yggdrasil:
+  application:
+    namespace: "dev"
+  client:
+    github.com.imkuqin_zw.yggdrasil.example.sample:
+      endpoints:
+        - address: "127.0.0.1:55879"
+          protocol: "grpc"
+  interceptor:
+    unaryClient: "logger"
+    streamClient: "logger"
+    config:
+      logger:
+        printReqAndRes: true
+  stats:
+    server: "otel"
+    client: "otel"
+    config:
+      otel:
+        receivedEvent: true
+        sentEvent: true
+
+  tracer: "otlpgrpc"
+  meter: "otlpgrpc"
+  governor:
+    port: 30001
+
+otlp:
+  grpc:
+    endpoint: "127.0.0.1:4317"
+
+golog:
+  file:
+    enable: true
+    filename: "/tmp/monitor/client/out.log"

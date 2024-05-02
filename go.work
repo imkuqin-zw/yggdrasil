@@ -1,0 +1,10 @@
+go 1.21.6
+
+use (
+	.
+	./contrib/gorm
+	./contrib/otelexporters
+	./contrib/polaris
+	./contrib/redis
+	./example
+)

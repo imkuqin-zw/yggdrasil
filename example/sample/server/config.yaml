@@ -16,10 +16,10 @@ yggdrasil:
     config:
       logger:
         printReqAndRes: true
-#    grpc:
+#    otlpgrpc:
 #      host: 127.0.0.1
 #      port: 30001
-#  tracer: jaeger
+#  trace: jaeger
 
 #jaeger:
 #  endpoint: "http://localhost:14268/api/traces"

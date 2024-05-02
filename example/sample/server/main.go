@@ -16,13 +16,14 @@ package main
 
 import (
 	"context"
+
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 
 	"github.com/imkuqin-zw/yggdrasil"
 	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
-	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logger"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logging"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"

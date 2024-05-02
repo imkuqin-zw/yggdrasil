@@ -20,8 +20,6 @@ package grpctest
 
 import (
 	"testing"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 )
 
 type s struct {
@@ -33,19 +31,19 @@ func Test(t *testing.T) {
 }
 
 func (s) TestInfo(t *testing.T) {
-	remote.Logger.Info("Info", "message.")
+	logger.Logger.Info("Info", "message.")
 }
 
 func (s) TestInfof(t *testing.T) {
-	remote.Logger.Infof("%v %v.", "Info", "message")
+	logger.Logger.Infof("%v %v.", "Info", "message")
 }
 
 func (s) TestWarning(t *testing.T) {
-	remote.Logger.Warnf("Warning", "message.")
+	logger.Logger.Warnf("Warning", "message.")
 }
 
 func (s) TestWarningf(t *testing.T) {
-	remote.Logger.Warnf("%v %v.", "Warning", "message")
+	logger.Logger.Warnf("%v %v.", "Warning", "message")
 }
 
 func (s) TestError(t *testing.T) {
@@ -54,9 +52,9 @@ func (s) TestError(t *testing.T) {
 	TLogger.ExpectError("Expected ln reason")
 	TLogger.ExpectError("Expected formatted reason")
 	TLogger.ExpectErrorN("Expected repeated reason", numErrors)
-	remote.Logger.Error("Expected", "reason")
-	remote.Logger.Errorf("%v %v %v", "Expected", "formatted", "reason")
+	logger.Logger.Error("Expected", "reason")
+	logger.Logger.Errorf("%v %v %v", "Expected", "formatted", "reason")
 	for i := 0; i < numErrors; i++ {
-		remote.Logger.Error("Expected repeated reason")
+		logger.Logger.Error("Expected repeated reason")
 	}
 }

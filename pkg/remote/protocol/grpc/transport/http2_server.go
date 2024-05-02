@@ -32,13 +32,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/consts"
+	stats2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/grpcrand"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/grpcutil"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"golang.org/x/net/http2"
@@ -63,14 +66,12 @@ var serverConnectionCounter uint64
 // http2Server implements the ServerTransport interface with HTTP2.
 type http2Server struct {
 	lastRead   int64 // Keep this field 64-bit aligned. Accessed atomically.
-	ctx        context.Context
 	done       chan struct{}
 	conn       net.Conn
 	loopy      *loopyWriter
 	readerDone chan struct{} // sync point to enable testing.
 	writerDone chan struct{} // sync point to enable testing.
-	remoteAddr net.Addr
-	localAddr  net.Addr
+	peer       peer.Peer
 	authInfo   credentials.AuthInfo // auth info about the connection
 	framer     *framer
 	// The max number of concurrent streams.
@@ -118,8 +119,9 @@ type http2Server struct {
 
 	// maxStreamMu guards the maximum stream ID
 	// This lock may not be taken if mu is already held.
-	maxStreamMu sync.Mutex
-	maxStreamID uint32 // max stream ID ever seen
+	maxStreamMu  sync.Mutex
+	maxStreamID  uint32 // max stream ID ever seen
+	statsHandler stats.Handler
 }
 
 // NewServerTransport creates a http2 transport with conn and configuration
@@ -228,14 +230,16 @@ func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport,
 	if kep.MinTime == 0 {
 		kep.MinTime = defaultKeepalivePolicyMinTime
 	}
-
 	done := make(chan struct{})
+	peer := peer.Peer{
+		Addr:      conn.RemoteAddr(),
+		LocalAddr: conn.LocalAddr(),
+		AuthInfo:  authInfo,
+	}
 	t := &http2Server{
-		ctx:               setConnection(context.Background(), rawConn),
 		done:              done,
 		conn:              conn,
-		remoteAddr:        conn.RemoteAddr(),
-		localAddr:         conn.LocalAddr(),
+		peer:              peer,
 		authInfo:          authInfo,
 		framer:            framer,
 		readerDone:        make(chan struct{}),
@@ -249,6 +253,7 @@ func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport,
 		kep:               kep,
 		initialWindowSize: iwz,
 		bufferPool:        newBufferPool(),
+		statsHandler:      config.StatsHandler,
 	}
 	t.controlBuf = newControlBuffer(t.done)
 	if dynamicWindow {
@@ -303,7 +308,7 @@ func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport,
 		t.loopy = newLoopyWriter(serverSide, t.framer, t.controlBuf, t.bdpEst)
 		t.loopy.ssGoAwayHandler = t.outgoingGoAwayHandler
 		if err := t.loopy.run(); err != nil {
-			remote.Logger.Debugf("transport: loopyWriter.run returning. Err: %v", err)
+			logger.Logger.Debugf("transport: loopyWriter.run returning. Err: %v", err)
 		}
 		_ = t.conn.Close()
 		t.controlBuf.finish()
@@ -314,7 +319,7 @@ func NewServerTransport(conn net.Conn, config *ServerConfig) (_ ServerTransport,
 }
 
 // operateHeader takes action on the decoded headers.
-func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(*Stream), traceCtx func(context.Context, string) context.Context) (fatal bool) {
+func (t *http2Server) operateHeaders(ctx context.Context, frame *http2.MetaHeadersFrame, handle func(*Stream)) (fatal bool) {
 	// Acquire max stream ID lock for entire duration
 	t.maxStreamMu.Lock()
 	defer t.maxStreamMu.Unlock()
@@ -335,17 +340,18 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 
 	if streamID%2 != 1 || streamID <= t.maxStreamID {
 		// illegal gRPC stream id.
-		remote.Logger.Errorf("transport: http2Server.HandleStreams received an illegal stream id: %v", streamID)
+		logger.Logger.Errorf("transport: http2Server.HandleStreams received an illegal stream id: %v", streamID)
 		return true
 	}
 	t.maxStreamID = streamID
 
 	buf := newRecvBuffer()
 	s := &Stream{
-		id:  streamID,
-		st:  t,
-		buf: buf,
-		fc:  &inFlow{limit: uint32(t.initialWindowSize)},
+		id:               streamID,
+		st:               t,
+		buf:              buf,
+		fc:               &inFlow{limit: uint32(t.initialWindowSize)},
+		headerWireLength: int(frame.Header().Length),
 	}
 	var (
 		// If a gRPC Response-Headers has already been received, then it means
@@ -385,7 +391,7 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 		// "Transports must consider requests containing the Connection header
 		// as malformed." - A41
 		case "connection":
-			remote.Logger.Errorf("transport: http2Server.operateHeaders parsed a :connection header which makes a request malformed as per the HTTP/2 spec")
+			logger.Logger.Errorf("transport: http2Server.operateHeaders parsed a :connection header which makes a request malformed as per the HTTP/2 spec")
 			headerError = true
 		default:
 			if isReservedHeader(hf.Name) && !isWhitelistedHeader(hf.Name) {
@@ -394,7 +400,7 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 			v, err := decodeMetadataHeader(hf.Name, hf.Value)
 			if err != nil {
 				headerError = true
-				remote.Logger.Warnf("Failed to decode metadata header (%q, %q): %v", hf.Name, hf.Value, err)
+				logger.Logger.Warnf("Failed to decode metadata header (%q, %q): %v", hf.Name, hf.Value, err)
 				break
 			}
 			mdata[hf.Name] = append(mdata[hf.Name], v)
@@ -408,7 +414,7 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 	// reason, this takes precedence over a client not speaking gRPC.
 	if len(mdata[":authority"]) > 1 || len(mdata["host"]) > 1 {
 		errMsg := fmt.Sprintf("num values of :authority: %v, num values of host: %v, both must only have 1 value as per HTTP/2 spec", len(mdata[":authority"]), len(mdata["host"]))
-		remote.Logger.Errorf("transport: %v", errMsg)
+		logger.Logger.Errorf("transport: %v", errMsg)
 		t.controlBuf.put(&earlyAbortStream{
 			httpStatus:     400,
 			streamID:       streamID,
@@ -446,18 +452,10 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 		s.state = streamReadDone
 	}
 	if timeoutSet {
-		s.ctx, s.cancel = context.WithTimeout(t.ctx, timeout)
+		s.ctx, s.cancel = context.WithTimeout(ctx, timeout)
 	} else {
-		s.ctx, s.cancel = context.WithCancel(t.ctx)
+		s.ctx, s.cancel = context.WithCancel(ctx)
 	}
-	pr := &peer.Peer{
-		Addr: t.remoteAddr,
-	}
-	// Attach Auth info if there is any.
-	if t.authInfo != nil {
-		pr.AuthInfo = t.authInfo
-	}
-	s.ctx = peer.PeerWithContext(s.ctx, pr)
 	// Attach the received metadata to the context.
 	if len(mdata) > 0 {
 		s.ctx = metadata.WithInContext(s.ctx, mdata)
@@ -481,7 +479,7 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 	}
 	if httpMethod != http.MethodPost {
 		t.mu.Unlock()
-		remote.Logger.Infof("transport: http2Server.operateHeaders parsed a :method field: %v which should be POST", httpMethod)
+		logger.Logger.Infof("transport: http2Server.operateHeaders parsed a :method field: %v which should be POST", httpMethod)
 		t.controlBuf.put(&cleanupStream{
 			streamID: streamID,
 			rst:      true,
@@ -499,7 +497,6 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 	s.requestRead = func(n int) {
 		t.adjustWindow(s, uint32(n))
 	}
-	s.ctx = traceCtx(s.ctx, s.method)
 	s.ctxDone = s.ctx.Done()
 	s.wq = newWriteQuota(defaultWriteQuota, s.ctxDone)
 	s.trReader = &transportReader{
@@ -525,7 +522,7 @@ func (t *http2Server) operateHeaders(frame *http2.MetaHeadersFrame, handle func(
 // HandleStreams receives incoming streams using the given handler. This is
 // typically run in a separate goroutine.
 // traceCtx attaches tracer to ctx and returns the new context.
-func (t *http2Server) HandleStreams(handle func(*Stream), traceCtx func(context.Context, string) context.Context) {
+func (t *http2Server) HandleStreams(ctx context.Context, handle func(*Stream)) {
 	defer close(t.readerDone)
 	for {
 		t.controlBuf.throttle()
@@ -533,7 +530,7 @@ func (t *http2Server) HandleStreams(handle func(*Stream), traceCtx func(context.
 		atomic.StoreInt64(&t.lastRead, time.Now().UnixNano())
 		if err != nil {
 			if se, ok := err.(http2.StreamError); ok {
-				remote.Logger.Debugf("transport: http2Server.HandleStreams encountered http2.StreamError: %v", se)
+				logger.Logger.Debugf("transport: http2Server.HandleStreams encountered http2.StreamError: %v", se)
 				t.mu.Lock()
 				s := t.activeStreams[se.StreamID]
 				t.mu.Unlock()
@@ -553,13 +550,13 @@ func (t *http2Server) HandleStreams(handle func(*Stream), traceCtx func(context.
 				t.Close()
 				return
 			}
-			remote.Logger.Debugf("transport: http2Server.HandleStreams failed to read frame: %v", err)
+			logger.Logger.Debugf("transport: http2Server.HandleStreams failed to read frame: %v", err)
 			t.Close()
 			return
 		}
 		switch frame := frame.(type) {
 		case *http2.MetaHeadersFrame:
-			if t.operateHeaders(frame, handle, traceCtx) {
+			if t.operateHeaders(ctx, frame, handle) {
 				t.Close()
 				break
 			}
@@ -576,7 +573,7 @@ func (t *http2Server) HandleStreams(handle func(*Stream), traceCtx func(context.
 		case *http2.GoAwayFrame:
 			// TODO: Handle GoAway from the client appropriately.
 		default:
-			remote.Logger.Errorf("transport: http2Server.HandleStreams found unhandled frame type %v.", frame)
+			logger.Logger.Errorf("transport: http2Server.HandleStreams found unhandled frame type %v.", frame)
 		}
 	}
 }
@@ -802,7 +799,7 @@ func (t *http2Server) handlePing(f *http2.PingFrame) {
 
 	if t.pingStrikes > maxPingStrikes {
 		// Send goaway and close the connection.
-		remote.Logger.Errorf("transport: Got too many pings from the client, closing the connection.")
+		logger.Logger.Errorf("transport: Got too many pings from the client, closing the connection.")
 		t.controlBuf.put(&goAway{code: http2.ErrCodeEnhanceYourCalm, debugData: []byte("too_many_pings"), closeConn: true})
 	}
 }
@@ -835,7 +832,7 @@ func (t *http2Server) checkForHeaderListSize(it interface{}) bool {
 	var sz int64
 	for _, f := range hdrFrame.hf {
 		if sz += int64(f.Size()); sz > int64(*t.maxSendHeaderListSize) {
-			remote.Logger.Errorf("header list size to send violates the maximum size (%d bytes) set by client", *t.maxSendHeaderListSize)
+			logger.Logger.Errorf("header list size to send violates the maximum size (%d bytes) set by client", *t.maxSendHeaderListSize)
 			return false
 		}
 	}
@@ -890,6 +887,19 @@ func (t *http2Server) writeHeaderLocked(s *Stream) error {
 		t.closeStream(s, true, http2.ErrCodeInternal, false)
 		return ErrHeaderListSizeLimitViolation
 	}
+
+	// Note: Headers are compressed with hpack after this call returns.
+	// No WireLength field is set here.
+	t.statsHandler.HandleRPC(s.ctx, &stats2.OutHeader{
+		OutHeaderBase: stats.OutHeaderBase{
+			Header:         s.header.Copy(),
+			FullMethod:     s.method,
+			RemoteEndpoint: s.st.Peer().Addr.String(),
+			LocalEndpoint:  s.st.peer.LocalAddr.String(),
+			Protocol:       consts.Scheme,
+		},
+		Compression: s.SendCompress(),
+	})
 	return nil
 }
 
@@ -923,7 +933,7 @@ func (t *http2Server) WriteStatus(s *Stream, st *status.Status) error {
 		stBytes, err := proto.Marshal(p)
 		if err != nil {
 			// TODO: return reason instead, when callers are able to handle it.
-			remote.Logger.Errorf("transport: failed to marshal rpc status: %v, reason: %v", p, err)
+			logger.Logger.Errorf("transport: failed to marshal rpc status: %v, reason: %v", p, err)
 		} else {
 			headerFields = append(headerFields, hpack.HeaderField{Name: "grpc-status-details-bin", Value: encodeBinHeader(stBytes)})
 		}
@@ -949,6 +959,12 @@ func (t *http2Server) WriteStatus(s *Stream, st *status.Status) error {
 	// Send a RST_STREAM after the trailers if the client has not already half-closed.
 	rst := s.getState() == streamActive
 	t.finishStream(s, rst, http2.ErrCodeNo, trailingHeader, true)
+
+	// Note: The trailer fields are compressed with hpack after this call returns.
+	// No WireLength field is set here.
+	t.statsHandler.HandleRPC(s.Context(), &stats.OutTrailerBase{
+		Trailer: s.trailer.Copy(),
+	})
 	return nil
 }
 
@@ -1047,7 +1063,7 @@ func (t *http2Server) keepalive() {
 			select {
 			case <-ageTimer.C:
 				// Close the connection after grace period.
-				remote.Logger.Infof("transport: closing server transport due to maximum connection age.")
+				logger.Logger.Infof("transport: closing server transport due to maximum connection age.")
 				t.Close()
 			case <-t.done:
 			}
@@ -1064,7 +1080,7 @@ func (t *http2Server) keepalive() {
 				continue
 			}
 			if outstandingPing && kpTimeoutLeft <= 0 {
-				remote.Logger.Infof("transport: closing server transport due to idleness.")
+				logger.Logger.Infof("transport: closing server transport due to idleness.")
 				t.Close()
 				return
 			}
@@ -1102,7 +1118,7 @@ func (t *http2Server) Close() {
 	t.controlBuf.finish()
 	close(t.done)
 	if err := t.conn.Close(); err != nil {
-		remote.Logger.Infof("transport: reason closing conn during Close: %v", err)
+		logger.Logger.Infof("transport: reason closing conn during Close: %v", err)
 	}
 	// Cancel all active streams.
 	for _, s := range streams {
@@ -1157,10 +1173,6 @@ func (t *http2Server) closeStream(s *Stream, rst bool, rstCode http2.ErrCode, eo
 		rstCode:  rstCode,
 		onWrite:  func() {},
 	})
-}
-
-func (t *http2Server) RemoteAddr() net.Addr {
-	return t.remoteAddr
 }
 
 func (t *http2Server) Drain() {
@@ -1249,6 +1261,15 @@ func (t *http2Server) getOutFlowWindow() int64 {
 	}
 }
 
+// Peer returns the peer of the transport.
+func (t *http2Server) Peer() *peer.Peer {
+	return &peer.Peer{
+		Addr:      t.peer.Addr,
+		LocalAddr: t.peer.LocalAddr,
+		AuthInfo:  t.peer.AuthInfo, // Can be nil
+	}
+}
+
 func getJitter(v time.Duration) time.Duration {
 	if v == infinity {
 		return 0
@@ -1270,6 +1291,6 @@ func GetConnection(ctx context.Context) net.Conn {
 // SetConnection adds the connection to the context to be able to get
 // information about the destination ip and port for an incoming RPC. This also
 // allows any unary or streaming interceptors to see the connection.
-func setConnection(ctx context.Context, conn net.Conn) context.Context {
+func SetConnection(ctx context.Context, conn net.Conn) context.Context {
 	return context.WithValue(ctx, connectionKey{}, conn)
 }

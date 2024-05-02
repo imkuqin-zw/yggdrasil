@@ -26,10 +26,8 @@ import (
 	"crypto/x509"
 	"net/url"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 )
-
-var logger = remote.Logger
 
 // SPIFFEIDFromState parses the SPIFFE ID from State. If the SPIFFE ID format
 // is invalid, return nil with warning.
@@ -53,20 +51,20 @@ func SPIFFEIDFromCert(cert *x509.Certificate) *url.URL {
 		}
 		// From this point, we assume the uri is intended for a SPIFFE ID.
 		if len(uri.String()) > 2048 {
-			logger.Warn("invalid SPIFFE ID: total ID length larger than 2048 bytes")
+			logger.Logger.Warn("invalid SPIFFE ID: total ID length larger than 2048 bytes")
 			return nil
 		}
 		if len(uri.Host) == 0 || len(uri.Path) == 0 {
-			logger.Warn("invalid SPIFFE ID: domain or workload ID is empty")
+			logger.Logger.Warn("invalid SPIFFE ID: domain or workload ID is empty")
 			return nil
 		}
 		if len(uri.Host) > 255 {
-			logger.Warn("invalid SPIFFE ID: domain length larger than 255 characters")
+			logger.Logger.Warn("invalid SPIFFE ID: domain length larger than 255 characters")
 			return nil
 		}
 		// A valid SPIFFE certificate can only have exactly one URI SAN field.
 		if len(cert.URIs) > 1 {
-			logger.Warn("invalid SPIFFE ID: multiple URI SANs")
+			logger.Logger.Warn("invalid SPIFFE ID: multiple URI SANs")
 			return nil
 		}
 		spiffeID = uri

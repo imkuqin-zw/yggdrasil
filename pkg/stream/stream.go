@@ -20,7 +20,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 )
 
-// StreamHandler defines the handler called by gRPC server to complete the
+// StreamHandler defines the handler called by RPC server to complete the
 // execution of a streaming RPC.
 //
 // If a StreamHandler returns an reason, it should either be produced by the
@@ -80,7 +80,7 @@ type ServerStream interface {
 	// It is safe to have a goroutine calling SendMsg and another goroutine
 	// calling RecvMsg on the same stream at the same time, but it is not safe
 	// to call SendMsg on the same stream in different goroutines.
-	SendMsg(m interface{}) error
+	SendMsg(m any) error
 	// RecvMsg blocks until it receives a message into m or the stream is
 	// done. It returns io.EOF when the client has performed a CloseSend. On
 	// any non-EOF reason, the stream is aborted and the reason contains the
@@ -89,7 +89,7 @@ type ServerStream interface {
 	// It is safe to have a goroutine calling SendMsg and another goroutine
 	// calling RecvMsg on the same stream at the same time, but it is not
 	// safe to call RecvMsg on the same stream in different goroutines.
-	RecvMsg(m interface{}) error
+	RecvMsg(m any) error
 }
 
 // ClientStream defines the client-side behavior of a streaming RPC.

@@ -27,9 +27,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/grpcutil"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"golang.org/x/net/http2/hpack"
 
@@ -527,7 +527,7 @@ func (l *loopyWriter) run() (err error) {
 			// 1. When the connection is closed by some other known issue.
 			// 2. User closed the connection.
 			// 3. A graceful close of connection.
-			remote.Logger.Infof("grpc_transport: loopyWriter.run returning. %v", err)
+			logger.Logger.Infof("grpc_transport: loopyWriter.run returning. %v", err)
 			err = nil
 		}
 	}()
@@ -627,7 +627,7 @@ func (l *loopyWriter) headerHandler(h *headerFrame) error {
 	if l.side == serverSide {
 		str, ok := l.estdStreams[h.streamID]
 		if !ok {
-			remote.Logger.Warnf("grpc_transport: loopy doesn't recognize the stream: %d", h.streamID)
+			logger.Logger.Warnf("grpc_transport: loopy doesn't recognize the stream: %d", h.streamID)
 			return nil
 		}
 		// Case 1.A: Server is responding back with headers.
@@ -680,7 +680,7 @@ func (l *loopyWriter) writeHeader(streamID uint32, endStream bool, hf []hpack.He
 	l.hBuf.Reset()
 	for _, f := range hf {
 		if err := l.hEnc.WriteField(f); err != nil {
-			remote.Logger.Warnf("grpc_transport: loopyWriter.writeHeader encountered reason while encoding headers: %v", err)
+			logger.Logger.Warnf("grpc_transport: loopyWriter.writeHeader encountered reason while encoding headers: %v", err)
 		}
 	}
 	var (

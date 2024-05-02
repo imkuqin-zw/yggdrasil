@@ -48,10 +48,10 @@ func TestConfig_Scan(t *testing.T) {
 	type Config struct {
 		Target string
 	}
-	err := Set("yggdrasil.client.sample.grpc.target", "192.168.3.52:49613")
+	err := Set("yggdrasil.client.sample.otlpgrpc.target", "192.168.3.52:49613")
 	require.Nil(t, err)
 	c := &Config{}
-	key := "yggdrasil.client.sample.grpc"
+	key := "yggdrasil.client.sample.otlpgrpc"
 	err = Scan(key, c)
 	fmt.Println(Get(""))
 	fmt.Println(Get("yggdrasil"))
@@ -68,7 +68,7 @@ func TestConfig_GetContainerDelimiterKey(t *testing.T) {
 	data := Get("yggdrasil.client.{example.polaris.server}.gd").Bytes([]byte("not found"))
 	assert.Equal(t, []byte("not found"), data)
 	data = Get("yggdrasil.client.{example.polaris.server}").Bytes()
-	assert.Equal(t, []byte(`{"grpc":{"target":"127.0.0.1:30001"}}`), data)
+	assert.Equal(t, []byte(`{"otlpgrpc":{"target":"127.0.0.1:30001"}}`), data)
 }
 
 func TestConfig_matchKey(t *testing.T) {

@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/consts"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding/proto"
 	transport2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport"
@@ -175,6 +176,19 @@ const (
 	compressionMade payloadFormat = 1 // compressed
 )
 
+// recvBufferPool is the pool of shared receive buffers.
+var (
+	sharedBufferPool     SharedBufferPool
+	sharedBufferPoolOnce sync.Once
+)
+
+func getShareBufferPool() SharedBufferPool {
+	sharedBufferPoolOnce.Do(func() {
+		sharedBufferPool = NewSharedBufferPool()
+	})
+	return sharedBufferPool
+}
+
 // parser reads complete gRPC messages from the underlying reader.
 type parser struct {
 	// r is the underlying reader.
@@ -185,6 +199,9 @@ type parser struct {
 	// The header of a gRPC message. Find more detail at
 	// https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md
 	header [5]byte
+
+	// recvBufferPool is the pool of shared receive buffers.
+	recvBufferPool SharedBufferPool
 }
 
 // recvMsg reads a complete gRPC message from the stream.
@@ -192,15 +209,15 @@ type parser struct {
 // It returns the message and its payload (compression/encoding)
 // format. The caller owns the returned msg memory.
 //
-// If there is an reason, possible values are:
+// If there is an error, possible values are:
 //   - io.EOF, when no messages remain
 //   - io.ErrUnexpectedEOF
 //   - of type transport.ConnectionError
-//   - an reason from the status package
+//   - an error from the status package
 //
-// No other reason values or types must be returned, which also means
+// No other error values or types must be returned, which also means
 // that the underlying io.Reader must not return an incompatible
-// reason.
+// error.
 func (p *parser) recvMsg(maxReceiveMessageSize int) (pf payloadFormat, msg []byte, err error) {
 	if _, err := p.r.Read(p.header[:]); err != nil {
 		return 0, nil, err
@@ -218,9 +235,7 @@ func (p *parser) recvMsg(maxReceiveMessageSize int) (pf payloadFormat, msg []byt
 	if int(length) > maxReceiveMessageSize {
 		return 0, nil, status.Errorf(code.Code_RESOURCE_EXHAUSTED, fmt.Sprintf("grpc: received message larger than max (%d vs. %d)", length, maxReceiveMessageSize))
 	}
-	// TODO(bradfitz,zhaoq): garbage. reuse buffer after proto decoding instead
-	// of making it for each message:
-	msg = make([]byte, int(length))
+	msg = p.recvBufferPool.Get(int(length))
 	if _, err := p.r.Read(msg); err != nil {
 		if err == io.EOF {
 			err = io.ErrUnexpectedEOF
@@ -272,16 +287,10 @@ func compress(in []byte, compressor encoding.Compressor) ([]byte, error) {
 	return cbuf.Bytes(), nil
 }
 
-const (
-	payloadLen = 1
-	sizeLen    = 4
-	headerLen  = payloadLen + sizeLen
-)
-
 // msgHeader returns a 5-byte header for the message being transmitted and the
 // payload, which is compData if non-nil or data otherwise.
 func msgHeader(data, compData []byte) (hdr []byte, payload []byte) {
-	hdr = make([]byte, headerLen)
+	hdr = make([]byte, consts.HeaderLen)
 	if compData != nil {
 		hdr[0] = byte(compressionMade)
 		data = compData
@@ -290,7 +299,7 @@ func msgHeader(data, compData []byte) (hdr []byte, payload []byte) {
 	}
 
 	// Write length of payload into buf
-	binary.BigEndian.PutUint32(hdr[payloadLen:], uint32(len(data)))
+	binary.BigEndian.PutUint32(hdr[consts.PayloadLen:], uint32(len(data)))
 	return hdr, data
 }
 
@@ -311,17 +320,17 @@ func checkRecvPayload(pf payloadFormat, recvCompress string, haveCompressor bool
 }
 
 type payloadInfo struct {
-	wireLength        int // The compressed length got from wire.
+	compressedLength  int // The compressed length got from wire.
 	uncompressedBytes []byte
 }
 
 func recvAndDecompress(p *parser, s *transport2.Stream, maxReceiveMessageSize int, payInfo *payloadInfo, compressor encoding.Compressor) ([]byte, error) {
-	pf, d, err := p.recvMsg(maxReceiveMessageSize)
+	pf, buf, err := p.recvMsg(maxReceiveMessageSize)
 	if err != nil {
 		return nil, err
 	}
 	if payInfo != nil {
-		payInfo.wireLength = len(d)
+		payInfo.compressedLength = len(buf)
 	}
 
 	if st := checkRecvPayload(pf, s.RecvCompress(), compressor != nil); st != nil {
@@ -332,7 +341,7 @@ func recvAndDecompress(p *parser, s *transport2.Stream, maxReceiveMessageSize in
 	if pf == compressionMade {
 		// To match legacy behavior, if the decompressor is set by WithDecompressor or RPCDecompressor,
 		// use this decompressor as the default.
-		d, size, err = decompress(compressor, d, maxReceiveMessageSize)
+		buf, size, err = decompress(compressor, buf, maxReceiveMessageSize)
 		if err != nil {
 			return nil, status.Errorf(code.Code_INTERNAL, fmt.Sprintf("grpc: failed to decompress the received message %v", err))
 		}
@@ -342,7 +351,7 @@ func recvAndDecompress(p *parser, s *transport2.Stream, maxReceiveMessageSize in
 			return nil, status.Errorf(code.Code_RESOURCE_EXHAUSTED, fmt.Sprintf("grpc: received message after decompression larger than max (%d vs. %d)", size, maxReceiveMessageSize))
 		}
 	}
-	return d, nil
+	return buf, nil
 }
 
 // Using compressor, decompress d, returning data and size.
@@ -377,15 +386,17 @@ func decompress(compressor encoding.Compressor, d []byte, maxReceiveMessageSize 
 // dc takes precedence over compressor.
 // TODO(dfawley): wrap the old compressor/decompressor using the new API?
 func recv(p *parser, c encoding.Codec, s *transport2.Stream, m interface{}, maxReceiveMessageSize int, payInfo *payloadInfo, compressor encoding.Compressor) error {
-	d, err := recvAndDecompress(p, s, maxReceiveMessageSize, payInfo, compressor)
+	buf, err := recvAndDecompress(p, s, maxReceiveMessageSize, payInfo, compressor)
 	if err != nil {
 		return err
 	}
-	if err := c.Unmarshal(d, m); err != nil {
+	if err := c.Unmarshal(buf, m); err != nil {
 		return status.Errorf(code.Code_INTERNAL, fmt.Sprintf("grpc: failed to unmarshal the received message %v", err))
 	}
 	if payInfo != nil {
-		payInfo.uncompressedBytes = d
+		payInfo.uncompressedBytes = buf
+	} else {
+		p.recvBufferPool.Put(&buf)
 	}
 	return nil
 }

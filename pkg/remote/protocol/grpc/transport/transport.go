@@ -32,10 +32,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
-
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"google.golang.org/genproto/googleapis/rpc/code"
 )
@@ -259,7 +260,8 @@ type Stream struct {
 	// headerValid indicates whether a valid header was received.  Only
 	// meaningful after headerChan is closed (always call waitOnHeader() before
 	// reading its value).  Not valid on server side.
-	headerValid bool
+	headerValid      bool
+	headerWireLength int
 
 	// hdrMu protects header and trailer metadata on the server-side.
 	hdrMu sync.Mutex
@@ -342,6 +344,11 @@ func (s *Stream) SetSendCompress(str string) {
 	s.sendCompress = str
 }
 
+// SendCompress returns the send compressor name.
+func (s *Stream) SendCompress() string {
+	return s.sendCompress
+}
+
 // Done returns a channel which is closed when it receives the final errors
 // from the server.
 func (s *Stream) Done() <-chan struct{} {
@@ -401,6 +408,12 @@ func (s *Stream) Context() context.Context {
 	return s.ctx
 }
 
+// SetContext sets the context of the stream. This will be deleted once the
+// stats handler callouts all move to gRPC layer.
+func (s *Stream) SetContext(ctx context.Context) {
+	s.ctx = ctx
+}
+
 // Method returns the method for the stream.
 func (s *Stream) Method() string {
 	return s.method
@@ -411,6 +424,12 @@ func (s *Stream) Method() string {
 // that is, after Done() is closed.
 func (s *Stream) Status() *status.Status {
 	return s.status
+}
+
+// HeaderWireLength returns the size of the headers of the stream as received
+// from the wire. Valid only on the server.
+func (s *Stream) HeaderWireLength() int {
+	return s.headerWireLength
 }
 
 // SetHeader sets the header metadata. This can be called multiple times.
@@ -527,6 +546,7 @@ type ServerConfig struct {
 	ReadBufferSize        int
 	MaxHeaderListSize     *uint32
 	HeaderTableSize       *uint32
+	StatsHandler          stats.Handler
 }
 
 // ConnectOptions covers all relevant options for communicating with the server.
@@ -553,8 +573,9 @@ type ConnectOptions struct {
 	// MaxHeaderListSize sets the max (uncompressed) size of header list that is prepared to be received.
 	MaxHeaderListSize *uint32
 	// UseProxy specifies if a proxy should be used.
-	UseProxy  bool
-	Authority string
+	UseProxy     bool
+	Authority    string
+	StatsHandler stats.Handler
 }
 
 func NewNetAddr(network, address string) (addr net.Addr, err error) {
@@ -657,6 +678,9 @@ type ClientTransport interface {
 
 	// RemoteAddr returns the remote network address.
 	RemoteAddr() net.Addr
+
+	// LocalAddr returns the local network address.
+	LocalAddr() net.Addr
 }
 
 // ServerTransport is the common interface for all gRPC server-side transport
@@ -666,7 +690,7 @@ type ClientTransport interface {
 // Write methods for a given Stream will be called serially.
 type ServerTransport interface {
 	// HandleStreams receives incoming streams using the given handler.
-	HandleStreams(func(*Stream), func(context.Context, string) context.Context)
+	HandleStreams(context.Context, func(*Stream))
 
 	// WriteHeader sends the header metadata for the given stream.
 	// WriteHeader may not be called on all streams.
@@ -685,8 +709,8 @@ type ServerTransport interface {
 	// handlers will be terminated asynchronously.
 	Close()
 
-	// RemoteAddr returns the remote network address.
-	RemoteAddr() net.Addr
+	// Peer returns the peer of the server transport.
+	Peer() *peer.Peer
 
 	// Drain notifies the client this ServerTransport stops accepting new RPCs.
 	Drain()

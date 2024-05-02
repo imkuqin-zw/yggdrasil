@@ -19,20 +19,10 @@ import (
 	"sync"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/resolver"
-	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 )
 
-var Logger = logger.Clone()
-
-type Client interface {
-	NewStream(ctx context.Context, desc *stream.StreamDesc, method string) (stream.ClientStream, error)
-	Close() error
-	Scheme() string
-}
-
-type ClientBuilder func(context.Context, string, resolver.Endpoint) Client
+type ClientBuilder func(context.Context, string, resolver.Endpoint, stats.Handler) Client
 
 type ServerInfo struct {
 	Protocol string
@@ -40,15 +30,7 @@ type ServerInfo struct {
 	Attr     map[string]string
 }
 
-type Server interface {
-	Serve() (<-chan error, error)
-	Stop() error
-	Info() ServerInfo
-}
-
-type MethodHandle func(ctx context.Context, sm string, ss stream.ServerStream) (interface{}, bool, error)
-
-type ServerBuilder func(MethodHandle) (Server, error)
+type ServerBuilder func(handle MethodHandle) (Server, error)
 
 var (
 	mu            sync.RWMutex

@@ -107,6 +107,7 @@ func StrToCamelCase(s string) string {
 
 	chunks := rxCamel.FindAll(byteSrc, -1)
 	for idx, val := range chunks {
+		//chunks[idx] = []byte(cases.Title(language.Make(string(val))).String(string(val)))
 		chunks[idx] = bytes.Title(val)
 	}
 	return Bytes2str(bytes.Join(chunks, nil))
@@ -137,7 +138,8 @@ func StrToLowerFirstCamelCase(s string) string {
 	if len(s) == 1 {
 		return strings.ToLower(string(s[0]))
 	}
-	return strings.ToLower(string(s[0])) + StrToCamelCase(s)[1:]
+	s = StrToCamelCase(s)
+	return strings.ToLower(string(s[0])) + s[1:]
 }
 
 // StrToUpperFirst returns the given string with the first letter being uppercase.

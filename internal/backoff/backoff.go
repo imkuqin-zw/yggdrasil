@@ -20,7 +20,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/grpcrand"
 )
 
-// Strategy defines the methodology for backing off after a grpc connection
+// Strategy defines the methodology for backing off after a otlpgrpc connection
 // failure.
 type Strategy interface {
 	// Backoff returns the amount of time to wait before the next retry given

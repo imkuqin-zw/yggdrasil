@@ -118,7 +118,7 @@ func (c *config) toSetInterface(val interface{}) interface{} {
 
 func (c *config) buildSetMap(key string, val interface{}) map[string]interface{} {
 	val = c.toSetInterface(val)
-	keys := genPath(strings.ToLower(key), c.keyDelimiter)
+	keys := genPath(key, c.keyDelimiter)
 	xarray.ReverseStringArray(keys)
 	tmp := make(map[string]interface{})
 	for i, k := range keys {

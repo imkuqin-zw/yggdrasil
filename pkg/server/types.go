@@ -22,7 +22,7 @@ type Endpoint interface {
 
 type Server interface {
 	RegisterService(sd *ServiceDesc, ss interface{})
-	Serve() (<-chan struct{}, <-chan struct{}, <-chan error)
+	Serve(startFlag chan<- struct{}) error
 	Stop() error
 	Endpoints() []Endpoint
 }

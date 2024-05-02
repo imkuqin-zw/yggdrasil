@@ -6,6 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
+
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,12 +17,15 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"io"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 
 	"github.com/imkuqin-zw/yggdrasil/internal/backoff"
 	"github.com/imkuqin-zw/yggdrasil/pkg/balancer"
@@ -120,6 +124,7 @@ type client struct {
 	remoteCli         map[string]remote.Client
 	unaryInterceptor  interceptor.UnaryClientInterceptor
 	streamInterceptor interceptor.StreamClientInterceptor
+	statsHandler      stats.Handler
 }
 
 func NewClient(ctx context.Context, serviceName string) (Client, error) {
@@ -129,6 +134,7 @@ func NewClient(ctx context.Context, serviceName string) (Client, error) {
 		configChange:  make(chan config.WatchEvent, 1),
 		remoteCli:     map[string]remote.Client{},
 		resolvedEvent: xsync.NewEvent(),
+		statsHandler:  stats.GetClientHandler(),
 	}
 	bc := backoff.DefaultConfig
 	bc.BaseDelay = time.Millisecond * 50
@@ -210,7 +216,7 @@ func (c *client) handlePickConfig(cfg config.Values) {
 			logger.Warnf("not found client builder, protocol: %s", item.Protocol)
 			continue
 		}
-		cli := builder(c.ctx, c.serviceName, item)
+		cli := builder(c.ctx, c.serviceName, item, c.statsHandler)
 		if cli != nil {
 			remoteCli[item.Address] = cli
 		}
@@ -327,7 +333,7 @@ func (c *client) newStream(ctx context.Context, desc *stream.StreamDesc, method 
 			return st, nil
 		}
 		logger.ErrorField("fault to new stream", logger.Err(err))
-		if err == balancer.ErrNoAvailableInstance {
+		if errors.Is(err, balancer.ErrNoAvailableInstance) {
 			return nil, status.New(code.Code_UNAVAILABLE, err)
 		}
 		if retries > 3 {

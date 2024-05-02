@@ -12,19 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package otel
 
 import (
-	"context"
-
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
-func encodeContext(ctx context.Context, enc ObjectEncoder) error {
-	spanCtx := trace.SpanFromContext(ctx).SpanContext()
-	if spanCtx.IsValid() {
-		enc.AddString("trace_id", spanCtx.TraceID().String())
-		enc.AddString("span_id", spanCtx.SpanID().String())
-	}
-	return nil
+type TracerProviderBuilder func(name string) trace.TracerProvider
+
+var tracerBuilders = make(map[string]TracerProviderBuilder)
+
+func RegisterTracerProviderBuilder(name string, constructor TracerProviderBuilder) {
+	tracerBuilders[name] = constructor
+}
+
+func GetTracerProviderBuilder(name string) TracerProviderBuilder {
+	constructor, _ := tracerBuilders[name]
+	return constructor
+}
+
+func init() {
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 }

@@ -29,9 +29,13 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
+	remotelg "github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/consts"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding"
+	stats2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport"
 	"github.com/imkuqin-zw/yggdrasil/pkg/resolver"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xsync"
@@ -67,6 +71,10 @@ type Config struct {
 	BackOffMaxDelay   time.Duration `default:"5s"`
 	MinConnectTimeout time.Duration `default:"1s"`
 	Network           string        `default:"tcp"`
+
+	DisableRecvBufferPool bool
+
+	recvBufferPool SharedBufferPool
 }
 
 func (cfg *Config) setDefault() {
@@ -96,28 +104,37 @@ type clientConn struct {
 	serviceName string
 
 	bs backoff.Strategy
+
+	statsHandler stats.Handler
 }
 
-func newClient(ctx context.Context, serviceName string, endpoint resolver.Endpoint) remote.Client {
+func newClient(ctx context.Context, serviceName string, endpoint resolver.Endpoint, statsHandler stats.Handler) remote.Client {
 	cfg := &Config{}
 	commKey := fmt.Sprintf(config.KeyRemoteProto, "grpc")
 	clientKey := fmt.Sprintf(config.KeyClientProtocolCfg, serviceName, "grpc")
 	if err := config.GetMulti(commKey, clientKey).Scan(cfg); err != nil {
-		remote.Logger.ErrorField("fault to load client config", logger.Err(err), logger.String("protocol", "grpc"))
+		remotelg.Logger.ErrorField("fault to load client config", logger.Err(err), logger.String("protocol", "grpc"))
 	}
 	cfg.setDefault()
 	cfg.Transport.Authority = serviceName
 	addr, err := transport.NewNetAddr(cfg.Network, endpoint.GetAddress())
 	if err != nil {
-		remote.Logger.ErrorField("fault to new client", logger.Err(err))
+		remotelg.Logger.ErrorField("fault to new client", logger.Err(err))
 		return nil
 	}
+	cfg.Transport.StatsHandler = statsHandler
+	if cfg.DisableRecvBufferPool {
+		cfg.recvBufferPool = nopBufferPool{}
+	} else {
+		cfg.recvBufferPool = getShareBufferPool()
+	}
 	cc := &clientConn{
-		cfg:         cfg,
-		endpoint:    endpoint,
-		serviceName: serviceName,
-		addr:        addr,
-		closeEvent:  xsync.NewEvent(),
+		cfg:          cfg,
+		endpoint:     endpoint,
+		serviceName:  serviceName,
+		addr:         addr,
+		closeEvent:   xsync.NewEvent(),
+		statsHandler: statsHandler,
 	}
 	cc.ctx, cc.cancel = context.WithCancel(ctx)
 	if cfg.BackOffMaxDelay == 0 {
@@ -173,7 +190,7 @@ func (cc *clientConn) connect(opts transport.ConnectOptions, connectDeadline tim
 		return errors.New("connection closed before server preface received")
 	case <-connectCtx.Done():
 		t.Close(transport.ErrConnClosing)
-		if connectCtx.Err() == context.DeadlineExceeded {
+		if errors.Is(connectCtx.Err(), context.DeadlineExceeded) {
 			return err
 		}
 		return nil
@@ -221,7 +238,7 @@ func (cc *clientConn) resetTransport() <-chan struct{} {
 			if err == nil {
 				break
 			}
-			remote.Logger.ErrorField("fault to connect server", logger.Err(err))
+			remotelg.Logger.ErrorField("fault to connect server", logger.Err(err))
 			retries++
 			if retries == 1 {
 				cc.mu.Lock()
@@ -265,10 +282,28 @@ func (cc *clientConn) onGoAway(r transport.GoAwayReason) {
 		}
 		cc.mu.Unlock()
 	}
-	remote.Logger.Debug("connect closed by remote", logger.Uint8("reason", uint8(r)))
+	remotelg.Logger.Debug("connect closed by remote", logger.Uint8("reason", uint8(r)))
 }
 
-func (cc *clientConn) NewStream(ctx context.Context, desc *stream.StreamDesc, method string) (stream.ClientStream, error) {
+func (cc *clientConn) NewStream(ctx context.Context, desc *stream.StreamDesc, method string) (cs stream.ClientStream, err error) {
+	ctx = cc.statsHandler.TagRPC(ctx, &stats.RPCTagInfoBase{FullMethod: method})
+	begin := &stats.RPCBeginBase{
+		Client:       true,
+		BeginTime:    time.Now(),
+		ClientStream: desc.ClientStreams,
+		ServerStream: desc.ServerStreams,
+	}
+	cc.statsHandler.HandleRPC(ctx, begin)
+	defer func() {
+		if err != nil {
+			cc.statsHandler.HandleRPC(ctx, &stats.RPCEndBase{
+				Client:    true,
+				BeginTime: begin.BeginTime,
+				EndTime:   time.Now(),
+				Err:       err,
+			})
+		}
+	}()
 	t := cc.transport
 	if t == nil {
 		tc := time.NewTimer(cc.cfg.WaitConnTimeout)
@@ -288,7 +323,7 @@ func (cc *clientConn) NewStream(ctx context.Context, desc *stream.StreamDesc, me
 	c := defaultCallInfo()
 	c.maxSendMessageSize = &cc.cfg.MaxSendMsgSize
 	c.maxReceiveMessageSize = &cc.cfg.MaxRecvMsgSize
-	if err := setCallInfoCodec(c); err != nil {
+	if err = setCallInfoCodec(c); err != nil {
 		return nil, err
 	}
 	callHdr := &transport.CallHdr{
@@ -312,13 +347,15 @@ func (cc *clientConn) NewStream(ctx context.Context, desc *stream.StreamDesc, me
 		return nil, err
 	}
 	st := &clientStream{
-		s:        s,
-		callInfo: c,
-		t:        t,
-		desc:     desc,
-		codec:    c.codec,
-		comp:     comp,
-		p:        &parser{r: s},
+		s:            s,
+		callInfo:     c,
+		t:            t,
+		desc:         desc,
+		codec:        c.codec,
+		comp:         comp,
+		p:            &parser{r: s, recvBufferPool: cc.cfg.recvBufferPool},
+		beginTime:    begin.BeginTime,
+		statsHandler: cc.statsHandler,
 	}
 	st.ctx, st.cancel = context.WithCancel(ctx)
 	if desc.ClientStreams || desc.ServerStreams {
@@ -366,20 +403,22 @@ func (cc *clientConn) Scheme() string {
 }
 
 type clientStream struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	s         *transport.Stream
-	t         transport.ClientTransport
-	callInfo  *callInfo
-	sentLast  bool
-	desc      *stream.StreamDesc
-	codec     encoding.Codec
-	comp      encoding.Compressor
-	decompSet bool
-	decomp    encoding.Compressor
-	p         *parser
-	mu        sync.Mutex
-	finished  bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	s            *transport.Stream
+	t            transport.ClientTransport
+	callInfo     *callInfo
+	sentLast     bool
+	desc         *stream.StreamDesc
+	codec        encoding.Codec
+	comp         encoding.Compressor
+	decompSet    bool
+	decomp       encoding.Compressor
+	p            *parser
+	mu           sync.Mutex
+	finished     bool
+	beginTime    time.Time
+	statsHandler stats.Handler
 }
 
 func (as *clientStream) Header() (metadata.MD, error) {
@@ -432,7 +471,7 @@ func (as *clientStream) SendMsg(m interface{}) (err error) {
 	}
 
 	// load hdr, payload, data
-	hdr, payld, _, err := prepareMsg(m, as.codec, as.comp)
+	hdr, payld, data, err := prepareMsg(m, as.codec, as.comp)
 	if err != nil {
 		return err
 	}
@@ -451,6 +490,14 @@ func (as *clientStream) SendMsg(m interface{}) (err error) {
 		}
 		return io.EOF
 	}
+	as.statsHandler.HandleRPC(as.ctx, &stats.RPCOutPayloadBase{
+		Client:        true,
+		Payload:       m,
+		Data:          data,
+		TransportSize: len(data) + consts.HeaderLen,
+		SendTime:      time.Now(),
+		Protocol:      consts.Scheme,
+	})
 	return nil
 }
 
@@ -470,7 +517,8 @@ func (as *clientStream) RecvMsg(m interface{}) (err error) {
 		// Only initialize this state once per stream.
 		as.decompSet = true
 	}
-	err = recv(as.p, as.codec, as.s, m, *as.callInfo.maxReceiveMessageSize, nil, as.decomp)
+	payInfo := &payloadInfo{}
+	err = recv(as.p, as.codec, as.s, m, *as.callInfo.maxReceiveMessageSize, payInfo, as.decomp)
 	if err != nil {
 		if err == io.EOF {
 			if statusErr := as.s.Status(); statusErr != nil {
@@ -480,6 +528,18 @@ func (as *clientStream) RecvMsg(m interface{}) (err error) {
 		}
 		return toRPCErr(err)
 	}
+
+	inPayload := &stats2.InPayload{
+		Compression:      as.s.RecvCompress(),
+		CompressedLength: payInfo.compressedLength,
+	}
+	inPayload.Data = payInfo.uncompressedBytes
+	inPayload.Payload = m
+	inPayload.Client = true
+	inPayload.TransportSize = payInfo.compressedLength + consts.HeaderLen
+	inPayload.RecvTime = time.Now()
+	inPayload.Protocol = consts.Scheme
+	as.statsHandler.HandleRPC(as.ctx, inPayload)
 
 	if as.desc.ServerStreams {
 		// Subsequent messages should be received by subsequent RecvMsg calls.
@@ -512,6 +572,13 @@ func (as *clientStream) finish(err error) {
 	if as.s != nil {
 		as.t.CloseStream(as.s, err)
 	}
+	end := &stats.RPCEndBase{
+		Client:    true,
+		BeginTime: as.beginTime,
+		EndTime:   time.Now(),
+		Err:       err,
+	}
+	as.statsHandler.HandleRPC(as.ctx, end)
 	as.cancel()
 	as.mu.Unlock()
 }

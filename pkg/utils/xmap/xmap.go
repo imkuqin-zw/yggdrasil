@@ -18,9 +18,8 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"reflect"
-
 	"github.com/mitchellh/mapstructure"
+	"reflect"
 )
 
 func Marshal(obj interface{}) map[string]interface{} {

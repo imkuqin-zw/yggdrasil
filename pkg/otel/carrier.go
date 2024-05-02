@@ -12,55 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tracer
+package otel
 
 import (
 	"strings"
+
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 
 	"go.opentelemetry.io/otel/propagation"
 )
 
 type MetadataReaderWriter struct {
-	MD map[string][]string
+	md *metadata.MD
+}
+
+func NewMetadataReaderWriter(md *metadata.MD) *MetadataReaderWriter {
+	return &MetadataReaderWriter{md: md}
 }
 
 // assert that MetadataReaderWriter implements the TextMapCarrier interface
 var _ propagation.TextMapCarrier = (*MetadataReaderWriter)(nil)
 
 func (w MetadataReaderWriter) Get(key string) string {
-	values, ok := w.MD[key]
-	if !ok {
+	values := w.md.Get(key)
+	if len(values) == 0 {
 		return ""
 	}
 	return strings.Join(values, ";")
 }
 
 func (w MetadataReaderWriter) Set(key, val string) {
-	// The GRPC HPACK implementation rejects any uppercase keys here.
-	//
-	// As such, since the HTTP_HEADERS format is case-insensitive anyway, we
-	// blindly lowercase the key (which is guaranteed to work in the
-	// Inject/Extract sense per the OpenTracing spec).
-	key = strings.ToLower(key)
-	w.MD[key] = append(w.MD[key], val)
-}
-
-func (w MetadataReaderWriter) ForeachKey(handler func(key, val string) error) error {
-	for k, vals := range w.MD {
-		for _, v := range vals {
-			if err := handler(k, v); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	w.md.Set(key, val)
 }
 
 func (w MetadataReaderWriter) Keys() []string {
-	keys := make([]string, 0, len(w.MD))
-	for k := range w.MD {
-		keys = append(keys, k)
+	out := make([]string, 0, len(*w.md))
+	for key := range *w.md {
+		out = append(out, key)
 	}
-	return keys
+	return out
 }

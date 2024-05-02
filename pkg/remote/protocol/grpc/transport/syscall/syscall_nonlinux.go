@@ -28,15 +28,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 )
 
 var once sync.Once
-var logger = remote.Logger
 
 func log() {
 	once.Do(func() {
-		logger.Infof("CPU time info is unavailable on non-linux environments.")
+		logger.Logger.Infof("CPU time info is unavailable on non-linux environments.")
 	})
 }
 

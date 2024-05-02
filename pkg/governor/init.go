@@ -37,7 +37,7 @@ func handleFunc() {
 	HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 	HandleFunc("/debug/pprof/profile", pprof.Profile)
 	HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	HandleFunc("/debug/pprof/tracer", pprof.Trace)
+	HandleFunc("/debug/pprof/trace", pprof.Trace)
 	HandleFunc("/env", envHandle)
 	HandleFunc("/configs", configHandle)
 	if info, ok := debug.ReadBuildInfo(); ok {

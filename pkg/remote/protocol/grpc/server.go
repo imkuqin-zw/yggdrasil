@@ -24,17 +24,21 @@ import (
 	"sync"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding/proto"
-	transport2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xnet"
-
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/consts"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding/proto"
+	stats2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/stats"
+	transport2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xnet"
 	"google.golang.org/genproto/googleapis/rpc/code"
 )
 
@@ -64,11 +68,14 @@ type serverOptions struct {
 	ConnectionTimeout     time.Duration
 	MaxHeaderListSize     *uint32
 	HeaderTableSize       *uint32
+	DisableRecvBufferPool bool
 
 	Attr map[string]string
 
 	creds credentials.TransportCredentials
 	codec encoding.Codec
+
+	recvBufferPool SharedBufferPool
 }
 
 func (opts *serverOptions) SetDefault() error {
@@ -118,10 +125,12 @@ type server struct {
 	// conns contains all active server transports. It is a map keyed on a
 	// listener address with the value being the set of active transports
 	// belonging to that listener.
-	conns   map[string]map[transport2.ServerTransport]bool
-	opts    serverOptions
-	handle  remote.MethodHandle
-	serveWG sync.WaitGroup
+	conns        map[transport2.ServerTransport]bool
+	opts         serverOptions
+	serveWG      sync.WaitGroup
+	handlersWG   sync.WaitGroup
+	handle       remote.MethodHandle
+	statsHandler stats.Handler
 }
 
 func newServer(handle remote.MethodHandle) (remote.Server, error) {
@@ -133,98 +142,21 @@ func newServer(handle remote.MethodHandle) (remote.Server, error) {
 		return nil, err
 	}
 	opts.codec = encoding.GetCodec(opts.CodeProto)
+	if opts.DisableRecvBufferPool {
+		opts.recvBufferPool = nopBufferPool{}
+	} else {
+		opts.recvBufferPool = getShareBufferPool()
+	}
 	s := &server{
-		stoppedCh: make(chan struct{}),
-		conns:     make(map[string]map[transport2.ServerTransport]bool),
-		opts:      opts,
-		handle:    handle,
+		stoppedCh:    make(chan struct{}),
+		conns:        make(map[transport2.ServerTransport]bool),
+		opts:         opts,
+		handle:       handle,
+		statsHandler: stats.GetServerHandler(),
 	}
 	s.cv = sync.NewCond(&s.mu)
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	return s, nil
-}
-
-func (s *server) serveStreams(st transport2.ServerTransport) {
-	defer st.Close()
-	var wg sync.WaitGroup
-	st.HandleStreams(func(stream *transport2.Stream) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.handleStream(st, stream)
-		}()
-	}, func(ctx context.Context, s string) context.Context {
-		return ctx
-	})
-	wg.Wait()
-}
-
-func (s *server) handleStream(t transport2.ServerTransport, stream *transport2.Stream) {
-	ctx := stream.Context()
-	ss := &serverStream{
-		ctx:                   ctx,
-		t:                     t,
-		s:                     stream,
-		p:                     &parser{r: stream},
-		codec:                 s.getCodec(stream.ContentSubtype()),
-		maxReceiveMessageSize: s.opts.MaxReceiveMessageSize,
-		maxSendMessageSize:    s.opts.MaxSendMessageSize,
-	}
-
-	// If dc is set and matches the stream's compression, use it.  Otherwise, try
-	// to find a matching registered compressor for decomp.
-	rc := stream.RecvCompress()
-	if rc != "" && rc != encoding.Identity {
-		ss.decomp = encoding.GetCompressor(rc)
-		if ss.decomp == nil {
-			st := status.Errorf(code.Code_UNIMPLEMENTED, fmt.Sprintf("grpc: Decompressor is not installed for grpc-encoding %q", rc))
-			t.WriteStatus(ss.s, st)
-		}
-	}
-
-	// If cp is set, use it.  Otherwise, attempt to compress the response using
-	// the incoming message compression method.
-	//
-	// NOTE: this needs to be ahead of all handling, https://github.com/grpc/grpc-go/issues/686.
-	if rc := stream.RecvCompress(); rc != "" && rc != encoding.Identity {
-		// Legacy compressor not specified; attempt to respond with same encoding.
-		ss.comp = encoding.GetCompressor(rc)
-		if ss.comp != nil {
-			stream.SetSendCompress(rc)
-		}
-	}
-
-	reply, isStream, err := s.handle(ctx, stream.Method(), ss)
-	if err != nil {
-		t.WriteStatus(stream, status.FromError(err))
-		return
-	}
-	if !isStream {
-		opts := &transport2.Options{Last: true}
-
-		if err := s.sendResponse(t, stream, reply, opts, ss.comp); err != nil {
-			if err == io.EOF {
-				// The entire stream is done (for unary RPC only).
-				return
-			}
-			if sts, ok := status.CoverError(err); ok {
-				if e := t.WriteStatus(stream, sts); e != nil {
-				}
-			} else {
-				switch st := err.(type) {
-				case transport2.ConnectionError:
-					// Nothing to do here.
-				default:
-					panic(fmt.Sprintf("grpc: Unexpected reason (%T) from sendResponse: %v", st, st))
-				}
-			}
-			return
-		}
-		// TODO: Should we be logging if writing status failed here, like above?
-		// Should the logging be in WriteStatus?  Should we ignore the WriteStatus
-		// reason or allow the stats handler to see it?
-		err = t.WriteStatus(stream, status.New(code.Code_OK, nil))
-	}
 }
 
 func (s *server) getCodec(contentSubtype string) encoding.Codec {
@@ -272,95 +204,19 @@ func (s *server) newTransport(c net.Conn) transport2.ServerTransport {
 		ReadBufferSize:        s.opts.ReadBufferSize,
 		MaxHeaderListSize:     s.opts.MaxHeaderListSize,
 		HeaderTableSize:       s.opts.HeaderTableSize,
+		StatsHandler:          s.statsHandler,
 	}
 	st, err := transport2.NewServerTransport(c, config)
 	if err != nil {
 		// ErrConnDispatched means that the connection was dispatched away from
 		// gRPC; those connections should be left open.
-		if err != credentials.ErrConnDispatched {
+		if !errors.Is(err, credentials.ErrConnDispatched) {
 			// Don't log on ErrConnDispatched and io.EOF to prevent log spam.
 			c.Close()
 		}
 		return nil
 	}
 	return st
-}
-
-func (s *server) Serve() (<-chan error, error) {
-	s.mu.Lock()
-	if s.stopped {
-		s.mu.Unlock()
-		return nil, errors.New("server had already stopped")
-	}
-	if s.serve {
-		return nil, errors.New("server had already serve")
-	}
-	s.serve = true
-	s.mu.Unlock()
-	lis, err := net.Listen(s.opts.Network, s.opts.Address)
-	if err != nil {
-		return nil, err
-	}
-	s.address = lis.Addr().String()
-	s.lis = lis
-	var tempDelay time.Duration
-	ch := make(chan error)
-	go func() {
-		var err error
-		defer func() {
-			<-s.stoppedCh
-			if err != nil {
-				ch <- err
-			}
-			close(ch)
-		}()
-		for {
-			rawConn, acceptErr := s.lis.Accept()
-			if acceptErr != nil {
-				if ne, ok := acceptErr.(interface{ Temporary() bool }); ok && ne.Temporary() {
-					if tempDelay == 0 {
-						tempDelay = 5 * time.Millisecond
-					} else {
-						tempDelay *= 2
-					}
-					if max := 1 * time.Second; tempDelay > max {
-						tempDelay = max
-					}
-					remote.Logger.Warnf("Accept reason: %v; retrying in %v", acceptErr, tempDelay)
-					timer := time.NewTimer(tempDelay)
-					select {
-					case <-timer.C:
-					case <-s.ctx.Done():
-						timer.Stop()
-						return
-					}
-					continue
-				}
-				s.mu.Lock()
-				if s.stopped {
-					s.mu.Unlock()
-					return
-				}
-				s.mu.Unlock()
-				remote.Logger.Errorf("done serving; Accept = %v", acceptErr)
-				err = acceptErr
-				return
-			}
-			tempDelay = 0
-			// Start a new goroutine to deal with rawConn so we don't stall this Accept
-			// loop goroutine.
-			//
-			// Make sure we account for the goroutine so GracefulStop doesn't nil out
-			// s.conns before this conn can be added.
-			s.serveWG.Add(1)
-			//TODO: add goroutine pool
-			go func() {
-				s.handleRawConn(lis.Addr().String(), rawConn)
-				s.serveWG.Done()
-			}()
-		}
-	}()
-	return ch, nil
 }
 
 func (s *server) Stop() error {
@@ -382,10 +238,8 @@ func (s *server) Stop() error {
 		_ = s.lis.Close()
 	}
 	if !s.drain {
-		for _, conns := range s.conns {
-			for st := range conns {
-				st.Drain()
-			}
+		for st := range s.conns {
+			st.Drain()
 		}
 		s.drain = true
 	}
@@ -411,32 +265,262 @@ func (s *server) Info() remote.ServerInfo {
 	}
 }
 
-// handleRawConn forks a goroutine to handle a just-accepted connection that
-// has not had any I/O performed on it yet.
-func (s *server) handleRawConn(lisAddr string, rawConn net.Conn) {
+func (s *server) Start() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.stopped {
-		rawConn.Close()
-		return
+		return errors.New("server had already stopped")
 	}
-	rawConn.SetDeadline(time.Now().Add(s.opts.ConnectionTimeout))
+	if s.serve {
+		return errors.New("server had already serve")
+	}
+	s.serve = true
+	lis, err := net.Listen(s.opts.Network, s.opts.Address)
+	if err != nil {
+		return err
+	}
+	s.address = lis.Addr().String()
+	s.lis = lis
+	return nil
+}
 
+func (s *server) Handle() error {
+	f := func() error {
+		var tempDelay time.Duration
+		for {
+			rawConn, acceptErr := s.lis.Accept()
+			if acceptErr != nil {
+				if ne, ok := acceptErr.(interface{ Temporary() bool }); ok && ne.Temporary() {
+					if tempDelay == 0 {
+						tempDelay = 5 * time.Millisecond
+					} else {
+						tempDelay *= 2
+					}
+					if max := 1 * time.Second; tempDelay > max {
+						tempDelay = max
+					}
+					logger.Logger.Warnf("Accept reason: %v; retrying in %v", acceptErr, tempDelay)
+					timer := time.NewTimer(tempDelay)
+					select {
+					case <-timer.C:
+					case <-s.ctx.Done():
+						timer.Stop()
+						return nil
+					}
+					continue
+				}
+				s.mu.Lock()
+				if s.stopped {
+					s.mu.Unlock()
+					return nil
+				}
+				s.mu.Unlock()
+				logger.Logger.Errorf("done serving; Accept = %v", acceptErr)
+				return acceptErr
+			}
+			tempDelay = 0
+			// Start a new goroutine to deal with rawConn so we don't stall this Accept
+			// loop goroutine.
+			//
+			// Make sure we account for the goroutine so GracefulStop doesn't nil out
+			// s.conns before this conn can be added.
+			s.serveWG.Add(1)
+			//TODO: add goroutine pool
+			go func() {
+				s.handleRawConn(rawConn)
+				s.serveWG.Done()
+			}()
+		}
+	}
+	err := f()
+	s.serveWG.Wait()
+	return err
+}
+
+func (s *server) handleRawConn(rawConn net.Conn) {
+	_ = rawConn.SetDeadline(time.Now().Add(s.opts.ConnectionTimeout))
 	// Finish handshaking (HTTP2)
 	st := s.newTransport(rawConn)
-	rawConn.SetDeadline(time.Time{})
+	_ = rawConn.SetDeadline(time.Time{})
 	if st == nil {
 		return
 	}
-
-	if !s.addConn(lisAddr, st) {
+	if !s.addConn(st) {
 		return
 	}
 	go func() {
-		s.serveStreams(st)
-		s.removeConn(lisAddr, st)
+		s.serveStreams(s.ctx, st, rawConn)
+		s.removeConn(st)
 	}()
+	//ctx := transport2.SetConnection(context.Background(), rawConn)
 }
 
-func (s *server) addConn(addr string, st transport2.ServerTransport) bool {
+func (s *server) serveStreams(ctx context.Context, st transport2.ServerTransport, rawConn net.Conn) {
+	ctx = transport2.SetConnection(ctx, rawConn)
+	ctx = peer.PeerWithContext(ctx, st.Peer())
+	ctx = s.statsHandler.TagChannel(ctx, &stats.ChanTagInfoBase{
+		RemoteEndpoint: st.Peer().Addr.String(),
+		LocalEndpoint:  st.Peer().LocalAddr.String(),
+		Protocol:       consts.Scheme,
+	})
+	s.statsHandler.HandleChannel(ctx, &stats.ChanBeginBase{})
+	defer func() {
+		st.Close()
+		s.statsHandler.HandleChannel(ctx, &stats.ChanEndBase{})
+	}()
+	st.HandleStreams(ctx, func(stream *transport2.Stream) {
+		s.handlersWG.Add(1)
+		go func() {
+			defer s.handlersWG.Done()
+			s.handleStream(st, stream)
+		}()
+	})
+}
+
+func (s *server) handleStream(t transport2.ServerTransport, stream *transport2.Stream) {
+	ctx := stream.Context()
+	md, _ := metadata.FromInContext(ctx)
+
+	ctx = s.statsHandler.TagRPC(ctx, &stats.RPCTagInfoBase{FullMethod: stream.Method()})
+	inHeader := &stats2.ServerInHeader{}
+	inHeader.Header = md
+	inHeader.Protocol = consts.Scheme
+	inHeader.TransportSize = stream.HeaderWireLength()
+	inHeader.FullMethod = stream.Method()
+	inHeader.RemoteEndpoint = t.Peer().Addr.String()
+	inHeader.LocalEndpoint = t.Peer().LocalAddr.String()
+	inHeader.Compression = stream.RecvCompress()
+	s.statsHandler.HandleRPC(ctx, inHeader)
+
+	ss := &serverStream{
+		ctx:                   ctx,
+		t:                     t,
+		s:                     stream,
+		svr:                   s,
+		p:                     &parser{r: stream, recvBufferPool: s.opts.recvBufferPool},
+		codec:                 s.getCodec(stream.ContentSubtype()),
+		maxReceiveMessageSize: s.opts.MaxReceiveMessageSize,
+		maxSendMessageSize:    s.opts.MaxSendMessageSize,
+	}
+
+	stream.SetContext(ctx)
+
+	//statsFunc := func(clientStream, serverStream bool) (func(), func(err error)) {
+	//	beginTime := time.Now()
+	//	bf := func() {
+	//		begin := &stats.RPCBeginBase{
+	//			BeginTime:    time.Now(),
+	//			ClientStream: clientStream,
+	//			ServerStream: serverStream,
+	//			Protocol:     consts.Scheme,
+	//		}
+	//		s.statsHandler.HandleRPC(ctx, begin)
+	//	}
+	//	ef := func(err error) {
+	//		end := &stats.RPCEndBase{
+	//			BeginTime: beginTime,
+	//			EndTime:   time.Now(),
+	//			Err:       err,
+	//		}
+	//		s.statsHandler.HandleRPC(ctx, end)
+	//	}
+	//	return bf, ef
+	//}
+	s.handle(ss)
+}
+
+//func (s *server) Serve() (<-chan remote.AcceptResult, error) {
+//	s.mu.Lock()
+//	defer s.mu.Unlock()
+//	if s.stopped {
+//		return nil, errors.New("server had already stopped")
+//	}
+//	if s.serve {
+//		return nil, errors.New("server had already serve")
+//	}
+//	s.serve = true
+//	lis, err := net.Listen(s.opts.Network, s.opts.Address)
+//	if err != nil {
+//		return nil, err
+//	}
+//	s.address = lis.Addr().String()
+//	s.lis = lis
+//	var tempDelay time.Duration
+//	ch := make(chan remote.AcceptResult, 5)
+//	go func() {
+//		var err error
+//		defer func() {
+//			<-s.stoppedCh
+//			if err != nil {
+//				ch <- &acceptRest{err: err}
+//			}
+//			close(ch)
+//		}()
+//		for {
+//			rawConn, acceptErr := s.lis.Accept()
+//			if acceptErr != nil {
+//				if ne, ok := acceptErr.(interface{ Temporary() bool }); ok && ne.Temporary() {
+//					if tempDelay == 0 {
+//						tempDelay = 5 * time.Millisecond
+//					} else {
+//						tempDelay *= 2
+//					}
+//					if max := 1 * time.Second; tempDelay > max {
+//						tempDelay = max
+//					}
+//					logger.Logger.Warnf("Accept reason: %v; retrying in %v", acceptErr, tempDelay)
+//					timer := time.NewTimer(tempDelay)
+//					select {
+//					case <-timer.C:
+//					case <-s.ctx.Done():
+//						timer.Stop()
+//						return
+//					}
+//					continue
+//				}
+//				s.mu.Lock()
+//				if s.stopped {
+//					s.mu.Unlock()
+//					return
+//				}
+//				s.mu.Unlock()
+//				logger.Logger.Errorf("done serving; Accept = %v", acceptErr)
+//				err = acceptErr
+//				return
+//			}
+//			tempDelay = 0
+//			rc := s.handleRawConn(rawConn)
+//			if rc != nil {
+//				s.serveWG.Add(1)
+//				ch <- &acceptRest{Channel: rc}
+//			}
+//		}
+//	}()
+//	return ch, nil
+//}
+
+// handleRawConn forks a goroutine to handle a just-accepted connection that
+// has not had any I/O performed on it yet.
+//func (s *server) handleRawConn(rawConn net.Conn) *remoteChannel {
+//	_ = rawConn.SetDeadline(time.Now().Add(s.opts.ConnectionTimeout))
+//	// Finish handshaking (HTTP2)
+//	st := s.newTransport(rawConn)
+//	_ = rawConn.SetDeadline(time.Time{})
+//	if st == nil {
+//		return nil
+//	}
+//	if !s.addConn(rawConn.LocalAddr().String(), st) {
+//		return nil
+//	}
+//	ctx := transport2.SetConnection(context.Background(), rawConn)
+//	return &remoteChannel{
+//		ctx: ctx,
+//		st:  st,
+//		s:   s,
+//	}
+//}
+
+func (s *server) addConn(st transport2.ServerTransport) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.conns == nil {
@@ -448,30 +532,15 @@ func (s *server) addConn(addr string, st transport2.ServerTransport) bool {
 		// immediately.
 		st.Drain()
 	}
-
-	if s.conns[addr] == nil {
-		// Create a map entry if this is the first connection on this listener.
-		s.conns[addr] = make(map[transport2.ServerTransport]bool)
-	}
-	s.conns[addr][st] = true
+	s.conns[st] = true
 	return true
 }
 
-func (s *server) removeConn(addr string, st transport2.ServerTransport) {
+func (s *server) removeConn(st transport2.ServerTransport) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	conns := s.conns[addr]
-	if conns != nil {
-		delete(conns, st)
-		if len(conns) == 0 {
-			// If the last connection for this address is being removed, also
-			// remove the map entry corresponding to the address. This is used
-			// in GracefulStop() when waiting for all connections to be closed.
-			delete(s.conns, addr)
-		}
-		s.cv.Broadcast()
-	}
+	delete(s.conns, st)
+	s.cv.Broadcast()
 }
 
 // serverStream implements a server side Stream.
@@ -479,6 +548,7 @@ type serverStream struct {
 	ctx   context.Context
 	t     transport2.ServerTransport
 	s     *transport2.Stream
+	svr   *server
 	p     *parser
 	codec encoding.Codec
 
@@ -489,10 +559,25 @@ type serverStream struct {
 	maxSendMessageSize    int
 
 	mu sync.Mutex // protects trInfo.tr after the service handler runs.
+
+	beginTime      time.Time
+	isClientStream bool
+	isServerStream bool
 }
 
 func (ss *serverStream) Context() context.Context {
 	return ss.ctx
+}
+
+func (ss *serverStream) SendHeader(md metadata.MD) error {
+	return ss.t.WriteHeader(ss.s, md)
+}
+
+func (ss *serverStream) SetTrailer(md metadata.MD) {
+	if md.Len() == 0 {
+		return
+	}
+	_ = ss.s.SetTrailer(md)
 }
 
 func (ss *serverStream) SetHeader(md metadata.MD) error {
@@ -502,34 +587,10 @@ func (ss *serverStream) SetHeader(md metadata.MD) error {
 	return ss.s.SetHeader(md)
 }
 
-func (ss *serverStream) SendHeader(md metadata.MD) error {
-	err := ss.t.WriteHeader(ss.s, md)
-	return err
-}
-
-func (ss *serverStream) SetTrailer(md metadata.MD) {
-	if md.Len() == 0 {
-		return
-	}
-	ss.s.SetTrailer(md)
-}
-
-func (ss *serverStream) SendMsg(m interface{}) (err error) {
-	defer func() {
-		if err != nil && err != io.EOF {
-			st := status.FromError(toRPCErr(err))
-			ss.t.WriteStatus(ss.s, st)
-			// Non-user specified status was sent out. This should be an reason
-			// case (as a server side Cancel maybe).
-			//
-			// This is not handled specifically now. User will return a final
-			// status from the service handler, we will log that reason instead.
-			// This behavior is similar to an interceptor.
-		}
-	}()
+func (ss *serverStream) SendMsg(m interface{}) error {
 
 	// load hdr, payload, data
-	hdr, payload, _, err := prepareMsg(m, ss.codec, ss.comp)
+	hdr, payload, data, err := prepareMsg(m, ss.codec, ss.comp)
 	if err != nil {
 		return err
 	}
@@ -541,31 +602,132 @@ func (ss *serverStream) SendMsg(m interface{}) (err error) {
 	if err := ss.t.Write(ss.s, hdr, payload, &transport2.Options{Last: false}); err != nil {
 		return toRPCErr(err)
 	}
+
+	ss.svr.statsHandler.HandleRPC(ss.Context(), &stats2.OutPayload{
+		RPCOutPayloadBase: stats.RPCOutPayloadBase{
+			Client:        false,
+			Payload:       m,
+			Data:          data,
+			TransportSize: len(payload) + consts.HeaderLen,
+			SendTime:      time.Now(),
+			Protocol:      consts.Scheme,
+		},
+		CompressedLength: len(payload),
+		Compression:      ss.s.SendCompress(),
+	})
+
 	return nil
 }
 
-func (ss *serverStream) RecvMsg(m interface{}) (err error) {
-	defer func() {
-		if err != nil && err != io.EOF {
-			st := status.FromError(toRPCErr(err))
-			ss.t.WriteStatus(ss.s, st)
-			// Non-user specified status was sent out. This should be an reason
-			// case (as a server side Cancel maybe).
-			//
-			// This is not handled specifically now. User will return a final
-			// status from the service handler, we will log that reason instead.
-			// This behavior is similar to an interceptor.
-		}
-	}()
-	var payInfo *payloadInfo
+func (ss *serverStream) RecvMsg(m interface{}) error {
+	var payInfo = &payloadInfo{}
 	if err := recv(ss.p, ss.codec, ss.s, m, ss.maxReceiveMessageSize, payInfo, ss.decomp); err != nil {
 		if err == io.EOF {
 			return err
 		}
-		if err == io.ErrUnexpectedEOF {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
 			err = status.Errorf(code.Code_INTERNAL, io.ErrUnexpectedEOF.Error())
 		}
 		return toRPCErr(err)
 	}
+	ss.svr.statsHandler.HandleRPC(ss.Context(), &stats2.InPayload{
+		RPCInPayloadBase: stats.RPCInPayloadBase{
+			Payload:       m,
+			Data:          payInfo.uncompressedBytes,
+			TransportSize: payInfo.compressedLength + consts.HeaderLen,
+			RecvTime:      time.Now(),
+			Protocol:      consts.Scheme,
+		},
+		CompressedLength: payInfo.compressedLength,
+		Compression:      ss.s.RecvCompress(),
+	})
 	return nil
+}
+
+func (ss *serverStream) Method() string {
+	return ss.s.Method()
+}
+
+func (ss *serverStream) Start(isClientStream, isServerStream bool) error {
+	begin := &stats.RPCBeginBase{
+		BeginTime:    time.Now(),
+		ClientStream: isClientStream,
+		ServerStream: isServerStream,
+		Protocol:     consts.Scheme,
+	}
+	ss.svr.statsHandler.HandleRPC(ss.Context(), begin)
+	ss.beginTime = begin.BeginTime
+	ss.isServerStream = isServerStream
+	ss.isClientStream = isClientStream
+
+	// If dc is set and matches the stream's compression, use it.  Otherwise, try
+	// to find a matching registered compressor for decomp.
+
+	rc := ss.s.RecvCompress()
+	if rc != "" && rc != encoding.Identity {
+		ss.decomp = encoding.GetCompressor(rc)
+		if ss.decomp == nil {
+			return status.Errorf(code.Code_UNIMPLEMENTED, fmt.Sprintf("grpc: Decompressor is not installed for grpc-encoding %q", rc))
+			//st := status.Errorf(code.Code_UNIMPLEMENTED, fmt.Sprintf("grpc: Decompressor is not installed for grpc-encoding %q", rc))
+			//_ = ss.t.WriteStatus(ss.s, st)
+		}
+	}
+
+	// If cp is set, use it.  Otherwise, attempt to compress the response using
+	// the incoming message compression method.
+	//
+	// NOTE: this needs to be ahead of all handling, https://github.com/grpc/grpc-go/issues/686.
+	if rc = ss.s.RecvCompress(); rc != "" && rc != encoding.Identity {
+		// Legacy compressor not specified; attempt to respond with same encoding.
+		ss.comp = encoding.GetCompressor(rc)
+		if ss.comp != nil {
+			ss.s.SetSendCompress(rc)
+		}
+	}
+	return nil
+}
+
+func (ss *serverStream) Finish(reply any, err error) {
+	if !ss.beginTime.IsZero() {
+		defer func() {
+			end := &stats.RPCEndBase{
+				BeginTime: ss.beginTime,
+				EndTime:   time.Now(),
+				Err:       err,
+				Protocol:  consts.Scheme,
+			}
+			ss.svr.statsHandler.HandleRPC(ss.Context(), end)
+		}()
+	}
+	if err != nil {
+		_ = ss.t.WriteStatus(ss.s, status.FromError(err))
+		return
+	}
+	if !ss.isClientStream && !ss.isServerStream {
+		opts := &transport2.Options{Last: true}
+
+		if err = ss.svr.sendResponse(ss.t, ss.s, reply, opts, ss.comp); err != nil {
+			if err == io.EOF {
+				// The entire stream is done (for unary RPC only).
+				return
+			}
+			if sts, ok := status.CoverError(err); ok {
+				if e := ss.t.WriteStatus(ss.s, sts); e != nil {
+				}
+			} else {
+				switch st := err.(type) {
+				case transport2.ConnectionError:
+					// Nothing to do here.
+				default:
+					panic(fmt.Sprintf("grpc: Unexpected reason (%T) from sendResponse: %v", st, st))
+				}
+			}
+			return
+		}
+	}
+
+	// TODO: Should we be logging if writing status failed here, like above?
+	// Should the logging be in WriteStatus?  Should we ignore the WriteStatus
+	// reason or allow the stats handler to see it?
+	err = ss.t.WriteStatus(ss.s, status.New(code.Code_OK, nil))
 }

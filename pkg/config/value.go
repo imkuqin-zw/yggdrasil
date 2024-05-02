@@ -227,6 +227,9 @@ func (m *value) Scan(val interface{}) error {
 		}
 		return defaults.Set(val)
 	}
+	if m.val == nil {
+		return defaults.Set(val)
+	}
 	c := mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
 		Result:     val,

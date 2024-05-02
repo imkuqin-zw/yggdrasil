@@ -26,17 +26,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 	"golang.org/x/sys/unix"
 )
-
-var logger = remote.Logger
 
 // GetCPUTime returns how much CPU time has passed since the start of this process.
 func GetCPUTime() int64 {
 	var ts unix.Timespec
 	if err := unix.ClockGettime(unix.CLOCK_PROCESS_CPUTIME_ID, &ts); err != nil {
-		logger.Fatal(err)
+		logger.Logger.Fatal(err)
 	}
 	return ts.Nano()
 }

@@ -25,10 +25,11 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	xotel "github.com/imkuqin-zw/yggdrasil/pkg/otel"
 	"github.com/imkuqin-zw/yggdrasil/pkg/registry"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
+	remotelg "github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/server"
-	"github.com/imkuqin-zw/yggdrasil/pkg/tracer"
+
 	"go.opentelemetry.io/otel"
 )
 
@@ -38,10 +39,6 @@ var (
 	initialized atomic.Bool
 	opts        = &options{serviceDesc: map[*server.ServiceDesc]interface{}{}}
 )
-
-func NewServer() server.Server {
-	return server.GetServer()
-}
 
 func NewClient(name string) client.Client {
 	cli, err := client.NewClient(context.Background(), name)
@@ -58,9 +55,10 @@ func Init(appName string, ops ...Option) {
 	initLogger()
 	initInstanceInfo(appName)
 	applyOpt(opts, ops...)
+	initGovernor(opts)
 	initRegistry(opts)
 	initTracer()
-	initGovernor(opts)
+	initMeter()
 	return
 }
 
@@ -110,11 +108,22 @@ func initRegistry(opts *options) {
 
 func initTracer() {
 	if tracerName := config.GetString(config.KeyTracer); len(tracerName) > 0 {
-		constructor := tracer.GetTracerProviderBuilder(tracerName)
+		constructor := xotel.GetTracerProviderBuilder(tracerName)
 		if constructor != nil {
 			otel.SetTracerProvider(constructor(pkg.Name()))
 		} else {
 			logger.ErrorField("not found tracer provider", logger.String("name", tracerName))
+		}
+	}
+}
+
+func initMeter() {
+	if meterName := config.GetString(config.KeyMeter); len(meterName) > 0 {
+		constructor := xotel.GetMeterProviderBuilder(meterName)
+		if constructor != nil {
+			otel.SetMeterProvider(constructor(pkg.Name()))
+		} else {
+			logger.ErrorField("not found meter provider", logger.String("name", meterName))
 		}
 	}
 }
@@ -169,15 +178,15 @@ func initLogger() {
 	if err := remoteLv.UnmarshalText(config.GetBytes(config.KeyRemoteLgLevel, []byte("error"))); err != nil {
 		logger.FatalField("fault to unmarshal remote logger level", logger.Err(err))
 	}
-	remote.Logger = logger.WithFields(logger.String("mod", "remote"))
-	remote.Logger.SetLevel(remoteLv)
+	remotelg.Logger = logger.Clone().WithFields(logger.String("mod", "remote"))
+	remotelg.Logger.SetLevel(remoteLv)
 	_ = config.AddWatcher(config.KeyRemoteLgLevel, func(event config.WatchEvent) {
 		var lv logger.Level
 		if err := lv.UnmarshalText(event.Value().Bytes([]byte("debug"))); err != nil {
 			logger.ErrorField("fault to unmarshal remote logger level", logger.Err(err))
 			return
 		}
-		remote.Logger.SetLevel(lv)
+		remotelg.Logger.SetLevel(lv)
 	})
 }
 
@@ -188,7 +197,7 @@ func initGovernor(opts *options) {
 
 func initServer(opts *options) {
 	if len(opts.serviceDesc) > 0 {
-		svr := server.GetServer()
+		svr := server.NetServer()
 		for k, v := range opts.serviceDesc {
 			svr.RegisterService(k, v)
 		}

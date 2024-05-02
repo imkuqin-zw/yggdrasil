@@ -16,11 +16,7 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg"
-	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/interceptor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
 )
@@ -56,38 +52,4 @@ type methodInfo struct {
 	MethodName    string `json:"methodName"`
 	ServerStreams bool   `json:"serverStreams"`
 	ClientStreams bool   `json:"clientStreams"`
-}
-
-var services = map[string][]methodInfo{}
-
-func registerService(desc *ServiceDesc) {
-	methods := make([]methodInfo, 0, len(desc.Methods)+len(desc.Streams))
-	for _, item := range desc.Methods {
-		methods = append(methods, methodInfo{
-			MethodName: item.MethodName,
-		})
-	}
-	for _, item := range desc.Streams {
-		methods = append(methods, methodInfo{
-			MethodName:    item.StreamName,
-			ServerStreams: item.ServerStreams,
-			ClientStreams: item.ClientStreams,
-		})
-	}
-	services[desc.ServiceName] = methods
-}
-
-func init() {
-	governor.HandleFunc("/services", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-		encoder := json.NewEncoder(w)
-		if r.URL.Query().Get("pretty") == "true" {
-			encoder.SetIndent("", "    ")
-		}
-		result := map[string]interface{}{
-			"appName":  pkg.Name(),
-			"services": services,
-		}
-		_ = encoder.Encode(result)
-	})
 }

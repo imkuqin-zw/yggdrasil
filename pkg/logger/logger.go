@@ -138,12 +138,11 @@ func (l *Logger) SetWriter(w Writer) {
 }
 
 func (l *Logger) Clone() *Logger {
-	newHelper := *l
-	lv := *l.lv
-	newHelper.lv = &lv
 	fields := make([]Field, len(l.fields))
 	copy(fields, l.fields)
-	return &newHelper
+	var lv Level
+	_ = lv.UnmarshalText([]byte(l.lv.String()))
+	return &Logger{lv: &lv, writer: l.writer, fields: fields}
 }
 
 func (l *Logger) WithFields(fields ...Field) *Logger {

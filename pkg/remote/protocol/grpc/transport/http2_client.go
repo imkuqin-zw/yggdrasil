@@ -32,13 +32,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	stats2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/stats"
 	grpcutil2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/grpcutil"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/syscall"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"golang.org/x/net/http2"
@@ -129,6 +131,8 @@ type http2Client struct {
 	bufferPool *bufferPool
 
 	connectionID uint64
+
+	statsHandlers stats.Handler
 }
 
 func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error), addr net.Addr, useProxy bool, grpcUA string) (net.Conn, error) {
@@ -281,6 +285,7 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr net.Addr, opts Connect
 		onClose:               onClose,
 		keepaliveEnabled:      keepaliveEnabled,
 		bufferPool:            newBufferPool(),
+		statsHandlers:         opts.StatsHandler,
 	}
 
 	t.controlBuf = newControlBuffer(t.ctxDone)
@@ -294,6 +299,16 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr net.Addr, opts Connect
 			updateFlowControl: t.updateFlowControl,
 		}
 	}
+
+	t.ctx = t.statsHandlers.TagChannel(t.ctx, &stats.ChanTagInfoBase{
+		RemoteEndpoint: t.RemoteAddr().String(),
+		LocalEndpoint:  t.LocalAddr().String(),
+		Protocol:       "grpc",
+	})
+	connBegin := &stats.ChanBeginBase{
+		Client: true,
+	}
+	t.statsHandlers.HandleChannel(t.ctx, connBegin)
 	if t.keepaliveEnabled {
 		t.kpDormancyCond = sync.NewCond(&t.mu)
 		go t.keepalive()
@@ -353,7 +368,7 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr net.Addr, opts Connect
 		t.loopy = newLoopyWriter(clientSide, t.framer, t.controlBuf, t.bdpEst)
 		err := t.loopy.run()
 		if err != nil {
-			remote.Logger.Errorf("transport: loopyWriter.run returning. Err: %v", err)
+			logger.Logger.Errorf("transport: loopyWriter.run returning. Err: %v", err)
 		}
 		// Do not close the transport.  Let reader goroutine handle it since
 		// there might be data in the buffers.
@@ -601,6 +616,21 @@ func (t *http2Client) NewStream(ctx context.Context, callHdr *CallHdr) (_ *Strea
 			return nil, &NewStreamError{Err: ErrConnClosing}
 		}
 	}
+
+	header, ok := metadata.FromOutContext(ctx)
+	if ok {
+		header.Set("user-agent", t.userAgent)
+	} else {
+		header = metadata.Pairs("user-agent", t.userAgent)
+	}
+	outHeader := &stats2.OutHeader{}
+	outHeader.Client = true
+	outHeader.FullMethod = callHdr.Method
+	outHeader.RemoteEndpoint = t.remoteAddr.String()
+	outHeader.LocalEndpoint = t.localAddr.String()
+	outHeader.Compression = callHdr.SendCompress
+	outHeader.Header = header
+	t.statsHandlers.HandleRPC(s.ctx, outHeader)
 	return s, nil
 }
 
@@ -719,6 +749,8 @@ func (t *http2Client) Close(err error) {
 	for _, s := range streams {
 		t.closeStream(s, err, false, http2.ErrCodeNo, st, nil, false)
 	}
+
+	t.statsHandlers.HandleChannel(t.ctx, &stats.ChanEndBase{Client: true})
 }
 
 // GracefulClose sets the state to draining, which prevents new streams from
@@ -894,7 +926,7 @@ func (t *http2Client) handleRSTStream(f *http2.RSTStreamFrame) {
 	}
 	statusCode, ok := http2ErrConvTab[f.ErrCode]
 	if !ok {
-		remote.Logger.Warnf("transport: http2Client.handleRSTStream found no mapped gRPC errors for the received http2 reason %v", f.ErrCode)
+		logger.Logger.Warnf("transport: http2Client.handleRSTStream found no mapped gRPC errors for the received http2 reason %v", f.ErrCode)
 		statusCode = code.Code_UNKNOWN
 	}
 	if statusCode == code.Code_CANCELLED {
@@ -976,7 +1008,7 @@ func (t *http2Client) handleGoAway(f *http2.GoAwayFrame) {
 		return
 	}
 	if f.ErrCode == http2.ErrCodeEnhanceYourCalm {
-		remote.Logger.Infof("Client received GoAway with http2.ErrCodeEnhanceYourCalm.")
+		logger.Logger.Infof("Client received GoAway with http2.ErrCodeEnhanceYourCalm.")
 	}
 	id := f.LastStreamID
 	if id > 0 && id%2 == 0 {
@@ -1167,7 +1199,7 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 			v, err := decodeMetadataHeader(hf.Name, hf.Value)
 			if err != nil {
 				headerError = fmt.Sprintf("transport: malformed %s: %v", hf.Name, err)
-				remote.Logger.Warnf("Failed to decode metadata header (%q, %q): %v", hf.Name, hf.Value, err)
+				logger.Logger.Warnf("Failed to decode metadata header (%q, %q): %v", hf.Name, hf.Value, err)
 				break
 			}
 			mdata[hf.Name] = append(mdata[hf.Name], v)
@@ -1219,6 +1251,23 @@ func (t *http2Client) operateHeaders(frame *http2.MetaHeadersFrame) {
 			s.noHeaders = true
 		}
 		close(s.headerChan)
+	}
+
+	if !endStream {
+		inHeader := &stats2.ClientInHeader{}
+		inHeader.Header = metadata.MD(mdata).Copy()
+		inHeader.Protocol = "grpc"
+		inHeader.TransportSize = int(frame.Header().Length)
+		inHeader.Compression = s.recvCompress
+		t.statsHandlers.HandleRPC(s.ctx, inHeader)
+	} else {
+		inTrailer := &stats.RPCInTrailerBase{
+			Client:        true,
+			TransportSize: int(frame.Header().Length),
+			Trailer:       metadata.MD(mdata).Copy(),
+			Protocol:      "grpc",
+		}
+		t.statsHandlers.HandleRPC(s.ctx, inTrailer)
 	}
 
 	if !endStream {
@@ -1312,7 +1361,7 @@ func (t *http2Client) reader() {
 		case *http2.WindowUpdateFrame:
 			t.handleWindowUpdate(frame)
 		default:
-			remote.Logger.Errorf("transport: http2Client.reader got unhandled frame type %v.", frame)
+			logger.Logger.Errorf("transport: http2Client.reader got unhandled frame type %v.", frame)
 		}
 	}
 }
@@ -1409,6 +1458,8 @@ func (t *http2Client) GoAway() <-chan struct{} {
 }
 
 func (t *http2Client) RemoteAddr() net.Addr { return t.remoteAddr }
+
+func (t *http2Client) LocalAddr() net.Addr { return t.localAddr }
 
 func (t *http2Client) getOutFlowWindow() int64 {
 	resp := make(chan uint32, 1)

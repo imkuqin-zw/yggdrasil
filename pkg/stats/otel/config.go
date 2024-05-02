@@ -12,19 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tracer
+package otel
 
-import "go.opentelemetry.io/otel/trace"
+import (
+	"fmt"
 
-type ProviderBuilder func(name string) trace.TracerProvider
+	"github.com/imkuqin-zw/yggdrasil/pkg/config"
+)
 
-var builders = make(map[string]ProviderBuilder)
-
-func RegisterTracerProviderBuilder(name string, constructor ProviderBuilder) {
-	builders[name] = constructor
+type Config struct {
+	ReceivedEvent bool `default:"true"`
+	SentEvent     bool `default:"true"`
 }
 
-func GetTracerProviderBuilder(name string) ProviderBuilder {
-	constructor, _ := builders[name]
-	return constructor
+func getCfg() *Config {
+	globalCfg := &Config{}
+	_ = config.Get(fmt.Sprintf(config.KeyStatsCfg, "otel")).Scan(globalCfg)
+	return globalCfg
 }

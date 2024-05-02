@@ -53,7 +53,7 @@ var (
 	KeyInterceptorCfg  = Join(KeyInterceptor, "config", "{%s}")
 
 	KeyRemoteProto   = Join(KeyBase, "remote.protocol.{%s}")
-	KeyRemoteLgLevel = Join(KeyBase, "remote.logger.level")
+	KeyRemoteLgLevel = Join(KeyBase, "logger.Logger.level")
 
 	KeyApplication  = Join(KeyBase, "application")
 	KeyAppName      = Join(KeyApplication, "name")
@@ -65,6 +65,7 @@ var (
 	KeyAppMetadata  = Join(KeyApplication, "metadata")
 
 	KeyTracer   = Join(KeyBase, "tracer")
+	KeyMeter    = Join(KeyBase, "meter")
 	KeyRegistry = Join(KeyBase, "registry")
 
 	KeyLogger        = Join(KeyBase, "logger")
@@ -73,6 +74,9 @@ var (
 	KeyLoggerTimeEnc = Join(KeyLogger, "timeEncoder")
 	KeyLoggerDurEnc  = Join(KeyLogger, "durationEncoder")
 	KeyLoggerStack   = Join(KeyLogger, "printStack")
+
+	KeyStats    = Join(KeyBase, "stats")
+	KeyStatsCfg = Join(KeyStats, "config")
 )
 
 func Join(s ...string) string {

@@ -24,7 +24,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type file struct {

@@ -16,6 +16,7 @@ package governor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -75,7 +76,7 @@ func (s *Server) Serve() error {
 	info := s.Info()
 	logger.InfoField("governor start", logger.String("endpoint", fmt.Sprintf("%s://%s", info.Scheme, info.Address)))
 	err := s.Server.Serve(s.listener)
-	if err == http.ErrServerClosed {
+	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return err

@@ -23,6 +23,8 @@ import (
 const (
 	ServerKindRpc      = "rpc"
 	ServerKindGovernor = "governor"
+	FrameworkVersion   = "1.3.1"
+	FrameworkName      = "yggdrasil"
 )
 
 var (

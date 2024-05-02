@@ -154,7 +154,7 @@ func (app *Application) Run() error {
 		app.running = true
 		app.optsMu.Unlock()
 		app.waitSignals()
-		if err = app.startServers(context.Background()); err != nil {
+		if err = app.startServers(); err != nil {
 			return
 		}
 		logger.Info("app shutdown")
@@ -207,42 +207,26 @@ func (app *Application) deregister() {
 	}
 }
 
-func (app *Application) startServers(ctx context.Context) error {
+func (app *Application) startServers() error {
 	app.runHooks(StageBeforeStart)
-	eg, ctx := errgroup.WithContext(ctx)
-	waitServer := make(chan struct{})
+	eg := errgroup.Group{}
+	svrStarCh := make(chan struct{})
 	if app.server != nil {
 		eg.Go(func() error {
-			cancelCh, initedCh, stoppedCh := app.server.Serve()
-			select {
-			case <-initedCh:
-				close(waitServer)
-				select {
-				case <-cancelCh:
-					_ = app.Stop()
-					err, _ := <-stoppedCh
-					return err
-				case err, _ := <-stoppedCh:
-					return err
-				}
-			case <-cancelCh:
-				_ = app.Stop()
-				err, _ := <-stoppedCh
-				return err
-			case err, _ := <-stoppedCh:
-				return err
-			}
+			return app.server.Serve(svrStarCh)
 		})
 	} else {
-		close(waitServer)
+		close(svrStarCh)
 	}
 	eg.Go(func() error {
 		return app.governor.Serve()
 	})
-	go func() {
-		<-waitServer
+	eg.Go(func() error {
+		defer close(svrStarCh)
+		<-svrStarCh
 		app.register()
-	}()
+		return nil
+	})
 	return eg.Wait()
 }
 

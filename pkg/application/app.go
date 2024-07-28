@@ -210,13 +210,13 @@ func (app *Application) deregister() {
 func (app *Application) startServers() error {
 	app.runHooks(StageBeforeStart)
 	eg := errgroup.Group{}
-	svrStarCh := make(chan struct{})
+	svrStarCh := make(chan struct{}, 1)
 	if app.server != nil {
 		eg.Go(func() error {
 			return app.server.Serve(svrStarCh)
 		})
 	} else {
-		close(svrStarCh)
+		svrStarCh <- struct{}{}
 	}
 	eg.Go(func() error {
 		return app.governor.Serve()

@@ -371,8 +371,8 @@ func (s *server) restServe() error {
 	s.serverWG.Add(1)
 	go func() {
 		defer s.serverWG.Done()
-		if err = s.restSvr.Serve(); err != nil {
-			logger.ErrorField("fault to handle rest channel", logger.Err(err))
+		if err = s.restSvr.Serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.ErrorField("the restful api server exits abnormally", logger.Err(err))
 		}
 	}()
 	return nil

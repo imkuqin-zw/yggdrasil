@@ -1,24 +1,22 @@
 style: github
-template: CHANGELOG.tpl.metadata
+template: CHANGELOG.tpl.md
 info:
   title: CHANGELOG
   repository_url: https://github.com/imkuqin-zw/yggdrasil
 options:
   commits:
-    filters:
-      Type:
-        - feat
-        - fix
-        - perf
-        - refactor
-        - chore
+     filters:
+       Type:
+         - feat
+         - fix
+         - perf
+         - refactor
   commit_groups:
-    title_maps:
-      feat: Features
-      fix: Bug Fixes
-      perf: Performance Improvements
-      refactor: Code Refactoring
-      chore: Chores
+     title_maps:
+       feat: Features
+       fix: Bug Fixes
+       perf: Performance Improvements
+       refactor: Code Refactoring
   header:
     pattern: "^(\\w*)(?:\\(([\\w\\$\\.\\-\\*\\s]*)\\))?\\:\\s(.*)$"
     pattern_maps:

@@ -18,7 +18,6 @@ const (
 	ctxPkg         = protogen.GoImportPath("context")
 	ioPkg          = protogen.GoImportPath("io")
 	marshalerPkg   = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/rest/marshaler")
-	chiPkg         = protogen.GoImportPath("github.com/go-chi/chi/v5")
 	statusPkg      = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/status")
 	interceptorPkg = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/interceptor")
 	restPkg        = protogen.GoImportPath("github.com/imkuqin-zw/yggdrasil/pkg/rest")
@@ -84,7 +83,7 @@ func genService(_ *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFi
 	}
 	// HTTP Server.
 	sd := &serviceDesc{
-		ChiPkg:         g.QualifiedGoIdent(chiPkg.Ident("")),
+		//ChiPkg:         g.QualifiedGoIdent(chiPkg.Ident("")),
 		HttpPkg:        g.QualifiedGoIdent(httpPkg.Ident("")),
 		MarshalerPkg:   g.QualifiedGoIdent(marshalerPkg.Ident("")),
 		StatusPkg:      g.QualifiedGoIdent(statusPkg.Ident("")),
@@ -102,6 +101,11 @@ func genService(_ *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFi
 	for _, method := range service.Methods {
 		if err := buildMethod(sd, g, method); err != nil {
 			return err
+		}
+	}
+	for _, item := range sd.Methods {
+		if len(item.PathVars) > 0 {
+			sd.ChiPkg = g.QualifiedGoIdent(protogen.GoImportPath("github.com/go-chi/chi/v5").Ident(""))
 		}
 	}
 	g.P(sd.execute())

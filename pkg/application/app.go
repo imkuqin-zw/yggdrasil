@@ -276,7 +276,7 @@ func (app *Application) Endpoints() []registry.Endpoint {
 	if app.server != nil {
 		for _, item := range app.server.Endpoints() {
 			attr := xmap.CloneStringMap(item.Metadata())
-			attr[registry.MDServerKind] = pkg.ServerKindRpc
+			attr[registry.MDServerKind] = string(item.Kind())
 			endpoints = append(endpoints, Endpoint{
 				address: item.Address(),
 				scheme:  item.Scheme(),
@@ -286,7 +286,7 @@ func (app *Application) Endpoints() []registry.Endpoint {
 	}
 	governorInfo := app.governor.Info()
 	attr := xmap.CloneStringMap(governorInfo.Attr)
-	attr[registry.MDServerKind] = pkg.ServerKindGovernor
+	attr[registry.MDServerKind] = string(pkg.ServerKindGovernor)
 	endpoints = append(endpoints, Endpoint{
 		address: governorInfo.Address,
 		scheme:  governorInfo.Scheme,

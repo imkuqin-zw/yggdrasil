@@ -36,8 +36,14 @@ const (
 	StageMax
 )
 
+type restServiceDesc struct {
+	ss     interface{}
+	Prefix []string
+}
+
 type options struct {
 	serviceDesc     map[*server.ServiceDesc]interface{}
+	restServiceDesc map[*server.RestServiceDesc]restServiceDesc
 	server          server.Server
 	governor        *governor.Server
 	registry        registry.Registry
@@ -108,6 +114,16 @@ func WithServiceDescMap(desc map[*server.ServiceDesc]interface{}) Option {
 func WithServiceDesc(desc *server.ServiceDesc, impl interface{}) Option {
 	return func(opts *options) error {
 		opts.serviceDesc[desc] = impl
+		return nil
+	}
+}
+
+func WithRestServiceDesc(desc *server.RestServiceDesc, impl interface{}, prefix ...string) Option {
+	return func(opts *options) error {
+		opts.restServiceDesc[desc] = restServiceDesc{
+			ss:     impl,
+			Prefix: prefix,
+		}
 		return nil
 	}
 }

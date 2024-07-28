@@ -137,7 +137,7 @@ func (w *watcherInstance) doWatch() error {
 		},
 	})
 	if nil != err {
-		logger.ErrorFiled("fail to do watch", logger.String("serviceName", w.info.ServiceName), logger.Err(err))
+		logger.ErrorField("fail to do watch", logger.String("serviceName", w.info.ServiceName), logger.Err(err))
 		return err
 	}
 	w.watchCancel = resp.CancelWatch

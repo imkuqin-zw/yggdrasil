@@ -19,7 +19,7 @@ import (
 	"fmt"
 
 	"github.com/imkuqin-zw/yggdrasil"
-	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
+	librarypb "github.com/imkuqin-zw/yggdrasil/example/protogen/library/v1"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logging"
@@ -34,9 +34,9 @@ func main() {
 		logger.Fatal(err)
 	}
 	yggdrasil.Init("github.com.imkuqin_zw.yggdrasil.example.sample.client")
-	client := helloword.NewGreeterClient(yggdrasil.NewClient("github.com.imkuqin_zw.yggdrasil.example.sample"))
+	client := librarypb.NewLibraryServiceClient(yggdrasil.NewClient("github.com.imkuqin_zw.yggdrasil.example.sample"))
 	ctx := metadata.WithStreamContext(context.TODO())
-	_, err := client.SayHello(ctx, &helloword.HelloRequest{Name: "fdasf"})
+	_, err := client.GetShelf(ctx, &librarypb.GetShelfRequest{Name: "fdasf"})
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func main() {
 	if header, ok := metadata.FromHeaderCtx(ctx); ok {
 		fmt.Println(header)
 	}
-	_, err = client.SayError(context.TODO(), &helloword.HelloRequest{Name: "fdasf"})
+	_, err = client.MoveBook(context.TODO(), &librarypb.MoveBookRequest{Name: "fdasf"})
 	if err != nil {
 		fmt.Println(status.FromError(err).Reason().Reason)
 	}

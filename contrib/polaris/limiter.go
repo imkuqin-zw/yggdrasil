@@ -23,7 +23,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/interceptor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"github.com/polarismesh/polaris-go/api"
 	"github.com/polarismesh/polaris-go/pkg/flow/data"

@@ -26,10 +26,10 @@ import (
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/consts"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/encoding/proto"
@@ -327,8 +327,10 @@ func (s *server) Handle() error {
 			s.serveWG.Add(1)
 			//TODO: add goroutine pool
 			go func() {
+				defer func() {
+					s.serveWG.Done()
+				}()
 				s.handleRawConn(rawConn)
-				s.serveWG.Done()
 			}()
 		}
 	}

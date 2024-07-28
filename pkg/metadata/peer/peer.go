@@ -39,6 +39,8 @@ type Peer struct {
 	AuthInfo credentials.AuthInfo
 	// Protocol is the protocol used for the RPC.
 	Protocol string
+	IsRest   bool
+	RemoteIp string
 }
 
 type peerKey struct{}

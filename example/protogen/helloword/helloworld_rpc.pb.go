@@ -4,7 +4,6 @@ package helloword
 
 import (
 	context "context"
-
 	client "github.com/imkuqin-zw/yggdrasil/pkg/client"
 	interceptor "github.com/imkuqin-zw/yggdrasil/pkg/interceptor"
 	metadata "github.com/imkuqin-zw/yggdrasil/pkg/metadata"
@@ -363,23 +362,23 @@ type UnimplementedGreeterServer struct {
 }
 
 func (UnimplementedGreeterServer) SayHello(context.Context, *HelloRequest) (*HelloReply, error) {
-	return nil, status.Errorf(code.Code_UNAUTHENTICATED, "method SayHello not implemented")
+	return nil, status.Errorf(code.Code_UNIMPLEMENTED, "method SayHello not implemented")
 }
 
 func (UnimplementedGreeterServer) SayError(context.Context, *HelloRequest) (*HelloReply, error) {
-	return nil, status.Errorf(code.Code_UNAUTHENTICATED, "method SayError not implemented")
+	return nil, status.Errorf(code.Code_UNIMPLEMENTED, "method SayError not implemented")
 }
 
 func (UnimplementedGreeterServer) SayHelloStream(GreeterSayHelloStreamServer) error {
-	return status.Errorf(code.Code_UNAUTHENTICATED, "method SayHelloStream not implemented")
+	return status.Errorf(code.Code_UNIMPLEMENTED, "method SayHelloStream not implemented")
 }
 
 func (UnimplementedGreeterServer) SayHelloClientStream(GreeterSayHelloClientStreamServer) error {
-	return status.Errorf(code.Code_UNAUTHENTICATED, "method SayHelloClientStream not implemented")
+	return status.Errorf(code.Code_UNIMPLEMENTED, "method SayHelloClientStream not implemented")
 }
 
 func (UnimplementedGreeterServer) SayHelloServerStream(*HelloRequest, GreeterSayHelloServerStreamServer) error {
-	return status.Errorf(code.Code_UNAUTHENTICATED, "method SayHelloServerStream not implemented")
+	return status.Errorf(code.Code_UNIMPLEMENTED, "method SayHelloServerStream not implemented")
 }
 
 func (UnimplementedGreeterServer) mustEmbedUnimplementedGreeterServer() {}

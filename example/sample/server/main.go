@@ -16,34 +16,42 @@ package main
 
 import (
 	"context"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
+	"errors"
 
 	"github.com/imkuqin-zw/yggdrasil"
-	"github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
+	librarypb "github.com/imkuqin-zw/yggdrasil/example/protogen/library"
+	librarypb2 "github.com/imkuqin-zw/yggdrasil/example/protogen/library/v1"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logging"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
-	"github.com/pkg/errors"
 )
 
-type GreeterImpl struct {
-	helloword.UnimplementedGreeterServer
+type LibraryImpl struct {
+	librarypb2.UnimplementedLibraryServiceServer
 }
 
-func (g GreeterImpl) SayHello(ctx context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+func (s *LibraryImpl) CreateShelf(ctx context.Context, request *librarypb2.CreateShelfRequest) (*librarypb2.Shelf, error) {
 	_ = metadata.SetTrailer(ctx, metadata.Pairs("trailer", "test"))
 	_ = metadata.SetHeader(ctx, metadata.Pairs("header", "test"))
-	return &helloword.HelloReply{Message: request.Name}, nil
+	return &librarypb2.Shelf{Name: "test", Theme: "test"}, nil
 }
 
-func (g GreeterImpl) SayError(ctx context.Context, request *helloword.HelloRequest) (*helloword.HelloReply, error) {
+func (s *LibraryImpl) GetShelf(ctx context.Context, request *librarypb2.GetShelfRequest) (*librarypb2.Shelf, error) {
 	_ = metadata.SetTrailer(ctx, metadata.Pairs("trailer", "test"))
 	_ = metadata.SetHeader(ctx, metadata.Pairs("header", "test"))
-	return &helloword.HelloReply{Message: request.Name}, status.FromReason(errors.New("not found"), helloword.Reason_ERROR_USER_NOT_FOUND, nil)
+	return &librarypb2.Shelf{Name: request.Name, Theme: "test"}, nil
+}
+
+func (s *LibraryImpl) MoveBook(ctx context.Context, request *librarypb2.MoveBookRequest) (*librarypb2.Book, error) {
+	return nil, status.FromReason(errors.New("test reason"), librarypb.Reason_BOOK_NOT_FOUND, nil)
+}
+
+func (s *LibraryImpl) GetBook(ctx context.Context, request *librarypb2.GetBookRequest) (*librarypb2.Book, error) {
+	return &librarypb2.Book{Name: request.Name}, nil
 }
 
 func main() {
@@ -51,7 +59,12 @@ func main() {
 		logger.FatalField("fault to load config file", logger.Err(err))
 	}
 	yggdrasil.Init("github.com.imkuqin_zw.yggdrasil.example.sample")
-	if err := yggdrasil.Serve(yggdrasil.WithServiceDesc(&helloword.GreeterServiceDesc, GreeterImpl{})); err != nil {
+	ss := &LibraryImpl{}
+
+	if err := yggdrasil.Serve(
+		yggdrasil.WithServiceDesc(&librarypb2.LibraryServiceServiceDesc, ss),
+		yggdrasil.WithRestServiceDesc(&librarypb2.LibraryServiceRestServiceDesc, ss),
+	); err != nil {
 		logger.FatalField("the application was ended forcefully ", logger.Err(err))
 		logger.Fatal(err)
 	}

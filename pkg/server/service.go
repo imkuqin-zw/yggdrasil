@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/interceptor"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
@@ -52,4 +53,22 @@ type methodInfo struct {
 	MethodName    string `json:"methodName"`
 	ServerStreams bool   `json:"serverStreams"`
 	ClientStreams bool   `json:"clientStreams"`
+}
+
+type RestMethodHandler func(w http.ResponseWriter, r *http.Request, srv interface{}, interceptor interceptor.UnaryServerInterceptor) (interface{}, error)
+
+type RestServiceDesc struct {
+	HandlerType interface{}
+	Methods     []RestMethodDesc
+}
+
+type RestMethodDesc struct {
+	Method  string
+	Path    string
+	Handler RestMethodHandler
+}
+
+type restRouterInfo struct {
+	Method string `json:"method"`
+	Path   string `json:"path"`
 }

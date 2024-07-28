@@ -46,6 +46,7 @@ type RegistryConfig struct {
 	Timeout          *time.Duration
 	RetryCount       *int
 	RegisterGovernor bool
+	RegisterRest     bool
 }
 
 type registry struct {
@@ -57,15 +58,17 @@ type registry struct {
 func (r *registry) Register(ctx context.Context, info registry2.Instance) error {
 	for _, endpoint := range info.Endpoints() {
 		meta := endpoint.Metadata()
-		governor := false
 		serverKind := meta[registry2.MDServerKind]
-		if serverKind == pkg.ServerKindGovernor {
+		if serverKind == string(pkg.ServerKindGovernor) {
 			if !r.cfg.RegisterGovernor {
 				continue
 			}
-			governor = true
+		} else if serverKind == string(pkg.ServerKindRest) {
+			if !r.cfg.RegisterRest {
+				continue
+			}
 		}
-		if err := r.registerService(ctx, info, endpoint, governor); err != nil {
+		if err := r.registerService(ctx, info, endpoint, serverKind); err != nil {
 			return err
 		}
 	}
@@ -86,7 +89,7 @@ func (r *registry) Deregister(ctx context.Context, info registry2.Instance) erro
 	return multierr.Combine(errs...)
 }
 
-func (r *registry) registerService(_ context.Context, info registry2.Instance, endpoint registry2.Endpoint, governor bool) error {
+func (r *registry) registerService(_ context.Context, info registry2.Instance, endpoint registry2.Endpoint, svrKind string) error {
 	host, port, err := net.SplitHostPort(endpoint.Address())
 	if err != nil {
 		return err
@@ -99,8 +102,10 @@ func (r *registry) registerService(_ context.Context, info registry2.Instance, e
 	version := info.Version()
 	protocol := endpoint.Scheme()
 	serviceName := info.Name()
-	if governor {
+	if svrKind == string(pkg.ServerKindGovernor) {
 		serviceName = fmt.Sprintf("%s.%s", serviceName, "governor")
+	} else if svrKind == string(pkg.ServerKindRest) {
+		serviceName = fmt.Sprintf("%s.%s", serviceName, "rest")
 	}
 	metadata := make(map[string]string)
 	xmap.MergeKVMap(metadata, info.Metadata(), endpoint.Metadata())
@@ -178,7 +183,7 @@ func (r *registry) deregisterService(_ context.Context, info registry2.Instance,
 //		case <-ticker.C:
 //			err := r.registerService(ctx, info, endpoint)
 //			if err != nil {
-//				logger.ErrorFiled("fault to register", logger.Err(err))
+//				logger.ErrorField("fault to register", logger.Err(err))
 //			}
 //		case <-ctx.Done():
 //			return
@@ -193,12 +198,12 @@ func (r *registry) Name() string {
 func buildRegistry() registry2.Registry {
 	cfg := RegistryConfig{}
 	if err := config.Scan(configKeyRegistry, &cfg); err != nil {
-		logger.FatalFiled("fault to load config", logger.Err(err))
+		logger.FatalField("fault to load config", logger.Err(err))
 		return nil
 	}
 	ctx, err := Context()
 	if err != nil {
-		logger.FatalFiled("fault to build provider api", logger.Err(err))
+		logger.FatalField("fault to build provider api", logger.Err(err))
 		return nil
 	}
 	return &registry{cfg: cfg, provider: api.NewProviderAPIByContext(ctx)}

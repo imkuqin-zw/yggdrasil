@@ -87,7 +87,7 @@ func (c *polaris) Watch() (<-chan source.SourceData, error) {
 				kv := make(map[string]interface{})
 				content := xstrings.Str2bytes(event.NewValue)
 				if err := yaml.Unmarshal(content, &kv); err != nil {
-					logger.ErrorFiled("fault to unmarshal config, err: %s", logger.Err(err))
+					logger.ErrorField("fault to unmarshal config, err: %s", logger.Err(err))
 					continue
 				}
 				for key := range c.firstKey {

@@ -66,6 +66,13 @@ func (e *Status) Code() int32 {
 	return e.stu.Code
 }
 
+func (e *Status) IsCode(c code.Code) bool {
+	if e == nil || e.stu == nil {
+		return code.Code_OK == c
+	}
+	return e.stu.Code == int32(c)
+}
+
 func (e *Status) Err() error {
 	if e.Code() == int32(code.Code_OK) {
 		return nil

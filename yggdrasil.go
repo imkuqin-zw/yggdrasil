@@ -37,7 +37,10 @@ var (
 	app         = application.New()
 	appRunning  atomic.Bool
 	initialized atomic.Bool
-	opts        = &options{serviceDesc: map[*server.ServiceDesc]interface{}{}}
+	opts        = &options{
+		serviceDesc:     map[*server.ServiceDesc]interface{}{},
+		restServiceDesc: map[*server.RestServiceDesc]restServiceDesc{},
+	}
 )
 
 func NewClient(name string) client.Client {
@@ -196,13 +199,22 @@ func initGovernor(opts *options) {
 }
 
 func initServer(opts *options) {
+	var svr server.Server
 	if len(opts.serviceDesc) > 0 {
-		svr := server.NetServer()
+		svr = server.NetServer()
 		for k, v := range opts.serviceDesc {
 			svr.RegisterService(k, v)
 		}
-		opts.server = svr
 	}
+	if len(opts.restServiceDesc) > 0 {
+		if svr == nil {
+			svr = server.NetServer()
+		}
+		for k, v := range opts.restServiceDesc {
+			svr.RegisterRestService(k, v.ss, v.Prefix...)
+		}
+	}
+	opts.server = svr
 }
 
 func applyOpt(opts *options, ops ...Option) {

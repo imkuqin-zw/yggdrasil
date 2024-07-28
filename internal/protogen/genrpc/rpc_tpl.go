@@ -317,17 +317,17 @@ type Unimplemented{{$svrType}}Server struct {
 {{range .Methods -}}
 {{ if .ClientStream -}}
 func (Unimplemented{{$svrType}}Server) {{.Name}}({{$svrType}}{{.Name}}Server) error {
-	return {{$status}}Errorf({{$.Code}}Code_UNAUTHENTICATED, "method {{.Name}} not implemented")
+	return {{$status}}Errorf({{$.Code}}Code_UNIMPLEMENTED, "method {{.Name}} not implemented")
 }
 
 {{else if .ServerStream -}}
 func (Unimplemented{{$svrType}}Server) {{.Name}}(*{{.Input}}, {{$svrType}}{{.Name}}Server) error{
-	return {{$status}}Errorf({{$.Code}}Code_UNAUTHENTICATED, "method {{.Name}} not implemented")
+	return {{$status}}Errorf({{$.Code}}Code_UNIMPLEMENTED, "method {{.Name}} not implemented")
 }
 
 {{else -}}
 func (Unimplemented{{$svrType}}Server) {{.Name}}({{$.Context}}, *{{.Input}}) (*{{.Output}}, error) {
-	return nil, {{$status}}Errorf({{$.Code}}Code_UNAUTHENTICATED, "method {{.Name}} not implemented")
+	return nil, {{$status}}Errorf({{$.Code}}Code_UNIMPLEMENTED, "method {{.Name}} not implemented")
 }
 
 {{end -}}

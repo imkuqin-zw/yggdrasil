@@ -12,21 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package main
 
-import "github.com/imkuqin-zw/yggdrasil/pkg"
+import (
+	"flag"
 
-type Endpoint interface {
-	Scheme() string
-	Address() string
-	Metadata() map[string]string
-	Kind() pkg.ServerKind
-}
+	"github.com/imkuqin-zw/yggdrasil/internal/protogen/genrest"
+	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/types/pluginpb"
+)
 
-type Server interface {
-	RegisterService(sd *ServiceDesc, ss interface{})
-	RegisterRestService(sd *RestServiceDesc, ss interface{}, prefix ...string)
-	Serve(startFlag chan<- struct{}) error
-	Stop() error
-	Endpoints() []Endpoint
+func main() {
+	protogen.Options{
+		ParamFunc: flag.CommandLine.Set,
+	}.Run(func(gen *protogen.Plugin) error {
+		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
+		for _, f := range gen.Files {
+			if !f.Generate {
+				continue
+			}
+			if err := genrest.GenerateFiles(gen, f); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

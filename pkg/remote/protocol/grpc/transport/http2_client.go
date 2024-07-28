@@ -39,9 +39,9 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/logger"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"

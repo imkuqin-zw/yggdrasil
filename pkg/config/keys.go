@@ -45,6 +45,12 @@ var (
 
 	KeyGovernor = Join(KeyBase, "governor")
 
+	KeyRest                 = Join(KeyBase, "rest")
+	KeyRestEnable           = Join(KeyRest, "enable")
+	KeyRestMarshaler        = Join(KeyRest, "marshaler")
+	KeyRestMarshalerSupport = Join(KeyRestMarshaler, "support")
+	KeyRestMarshalerCfg     = Join(KeyRestMarshaler, "config", "{%s}")
+
 	KeyInterceptor     = Join(KeyBase, "interceptor")
 	KeyIntUnaryClient  = Join(KeyInterceptor, "unaryClient")
 	KeyIntStreamClient = Join(KeyInterceptor, "streamClient")

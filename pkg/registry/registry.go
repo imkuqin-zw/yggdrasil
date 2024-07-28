@@ -17,7 +17,7 @@ package registry
 import "context"
 
 const (
-	MDServerKind = "serverKink"
+	MDServerKind = "serverKind"
 )
 
 type Builder func() Registry

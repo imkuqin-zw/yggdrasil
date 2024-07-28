@@ -3,6 +3,10 @@ yggdrasil:
     protocol:
       - "grpc"
 
+  rest:
+    enable: true
+    port: 3000
+
   remote:
     protocol:
       grpc:

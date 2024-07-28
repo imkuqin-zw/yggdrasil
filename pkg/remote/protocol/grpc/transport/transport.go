@@ -33,8 +33,8 @@ import (
 	"time"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/peer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/keepalive"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"

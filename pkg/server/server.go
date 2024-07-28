@@ -30,6 +30,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote"
+	"github.com/imkuqin-zw/yggdrasil/pkg/rest"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"github.com/imkuqin-zw/yggdrasil/pkg/stream"
@@ -52,6 +53,7 @@ var (
 type serverInfo struct {
 	scheme   string
 	address  string
+	svrKind  pkg.ServerKind
 	metadata map[string]string
 }
 
@@ -63,6 +65,10 @@ func (si *serverInfo) Metadata() map[string]string {
 	return si.metadata
 }
 
+func (si *serverInfo) Kind() pkg.ServerKind {
+	return si.svrKind
+}
+
 func (si *serverInfo) Scheme() string {
 	return si.scheme
 }
@@ -71,19 +77,28 @@ type server struct {
 	mu                sync.RWMutex
 	services          map[string]*ServiceInfo // service name -> service serverInfo
 	servicesDesc      map[string][]methodInfo
+	restRouterDesc    []restRouterInfo
 	unaryInterceptor  interceptor.UnaryServerInterceptor
 	streamInterceptor interceptor.StreamServerInterceptor
 	servers           []remote.Server
 	state             int
 	serverWG          sync.WaitGroup
 	stats             stats.Handler
+
+	restSvr    rest.Server
+	restEnable bool
 }
 
 func NetServer() Server {
 	svr = &server{
-		services:     map[string]*ServiceInfo{},
-		servicesDesc: map[string][]methodInfo{},
-		stats:        stats.GetServerHandler(),
+		services:       map[string]*ServiceInfo{},
+		servicesDesc:   map[string][]methodInfo{},
+		restRouterDesc: []restRouterInfo{},
+		stats:          stats.GetServerHandler(),
+	}
+	if config.GetBool(config.KeyRestEnable, false) {
+		svr.restEnable = true
+		svr.restSvr = rest.NewServer()
 	}
 	svr.initInterceptor()
 	svr.initRemoteServer()
@@ -99,6 +114,18 @@ func NetServer() Server {
 		}
 		_ = encoder.Encode(result)
 	})
+	governor.HandleFunc("/rest", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		encoder := json.NewEncoder(w)
+		if r.URL.Query().Get("pretty") == "true" {
+			encoder.SetIndent("", "    ")
+		}
+		result := map[string]interface{}{
+			"appName": pkg.Name(),
+			"routers": svr.restRouterDesc,
+		}
+		_ = encoder.Encode(result)
+	})
 
 	return svr
 }
@@ -108,14 +135,30 @@ func NetServer() Server {
 // invoking Serve. If ss is non-nil (for legacy code), its type is checked to
 // ensure it implements sd.HandlerType.
 func (s *server) RegisterService(sd *ServiceDesc, ss interface{}) {
-	if ss != nil {
-		ht := reflect.TypeOf(sd.HandlerType).Elem()
-		st := reflect.TypeOf(ss)
-		if !st.Implements(ht) {
-			logger.Fatalf("Server.RegisterService found the handler of type %v that does not satisfy %v", st, ht)
-		}
+	if ss == nil {
+		logger.Fatalf("Server.RegisterService handler is nil")
+	}
+	ht := reflect.TypeOf(sd.HandlerType).Elem()
+	st := reflect.TypeOf(ss)
+	if !st.Implements(ht) {
+		logger.Fatalf("Server.RegisterService found the handler of type %v that does not satisfy %v", st, ht)
 	}
 	s.register(sd, ss)
+}
+
+func (s *server) RegisterRestService(sd *RestServiceDesc, ss interface{}, prefix ...string) {
+	if !s.restEnable {
+		return
+	}
+	if ss == nil {
+		logger.Fatalf("Server.RegisterService handler is nil")
+	}
+	ht := reflect.TypeOf(sd.HandlerType).Elem()
+	st := reflect.TypeOf(ss)
+	if !st.Implements(ht) {
+		logger.Fatalf("Server.RegisterService found the handler of type %v that does not satisfy %v", st, ht)
+	}
+	s.registerRest(sd, ss, prefix...)
 }
 
 func (s *server) Stop() error {
@@ -139,6 +182,12 @@ func (s *server) Stop() error {
 				logger.String("protocol", item.Info().Protocol), logger.Err(err))
 		}
 	}
+	if s.restEnable {
+		if err := s.restSvr.Stop(); err != nil {
+			errs = append(errs, err)
+			logger.ErrorField("fault to stop rest server", logger.Err(err))
+		}
+	}
 	return multierr.Combine(errs...)
 }
 
@@ -159,6 +208,11 @@ func (s *server) Serve(startFlag chan<- struct{}) error {
 			return err
 		}
 	}
+
+	if err := s.restServe(); err != nil {
+		return err
+	}
+
 	startFlag <- struct{}{}
 	s.serverWG.Wait()
 	return nil
@@ -172,7 +226,16 @@ func (s *server) Endpoints() []Endpoint {
 			scheme:   e.Protocol,
 			address:  e.Address,
 			metadata: e.Attr,
+			svrKind:  pkg.ServerKindRpc,
 		}
+	}
+	if s.restEnable {
+		endpoints = append(endpoints, &serverInfo{
+			scheme:   "http",
+			address:  s.restSvr.Info().GetAddress(),
+			metadata: s.restSvr.Info().GetAttributes(),
+			svrKind:  pkg.ServerKindRest,
+		})
 	}
 	return endpoints
 }
@@ -254,6 +317,28 @@ func (s *server) registerServiceDesc(desc *ServiceDesc) {
 	s.servicesDesc[desc.ServiceName] = methods
 }
 
+func (s *server) registerRest(sd *RestServiceDesc, ss interface{}, prefix ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var pathPrefix string
+	if len(prefix) != 0 {
+		pathPrefix = "/" + strings.TrimPrefix(prefix[0], "/")
+	}
+
+	for _, item := range sd.Methods {
+		method := item.Method
+		path := pathPrefix + item.Path
+		handler := item.Handler
+		s.restRouterDesc = append(s.restRouterDesc, restRouterInfo{
+			Method: method,
+			Path:   path,
+		})
+		s.restSvr.Handle(method, path, func(w http.ResponseWriter, r *http.Request) (interface{}, error) {
+			return handler(w, r, ss, s.unaryInterceptor)
+		})
+	}
+}
+
 func (s *server) serve(svr remote.Server) error {
 	err := svr.Start()
 	if err != nil {
@@ -268,6 +353,26 @@ func (s *server) serve(svr remote.Server) error {
 		if err = svr.Handle(); err != nil {
 			logger.ErrorField("fault to handle channel",
 				logger.String("protocol", svr.Info().Protocol), logger.Err(err))
+		}
+	}()
+	return nil
+}
+
+func (s *server) restServe() error {
+	if !s.restEnable {
+		return nil
+	}
+	err := s.restSvr.Start()
+	if err != nil {
+		logger.ErrorField("fault to start rest server", logger.Err(err))
+		return err
+	}
+	logger.InfoField("rest server started", logger.String("endpoint", svr.restSvr.Info().GetAddress()))
+	s.serverWG.Add(1)
+	go func() {
+		defer s.serverWG.Done()
+		if err = s.restSvr.Serve(); err != nil {
+			logger.ErrorField("fault to handle rest channel", logger.Err(err))
 		}
 	}()
 	return nil

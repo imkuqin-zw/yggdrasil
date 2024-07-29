@@ -18,7 +18,7 @@ func local_handler_{{$.ServiceType}}_{{ .Name }}_{{.Num}}(w {{$.HttpPkg}}Respons
 				return nil, {{$.StatusPkg}}New({{$.CodePkg}}Code_INVALID_ARGUMENT, err)
 			}
 		{{else -}}
-			if err := {{$.RestPkg}}PopulateQueryParameters(protoReq, r.Form); err != nil {
+			if err := {{$.RestPkg}}PopulateQueryParameters(protoReq, r.URL.Query()); err != nil {
 				return nil,  {{$.StatusPkg}}New({{$.CodePkg}}Code_INVALID_ARGUMENT, err)
 			}
 		{{end -}}

@@ -2,11 +2,24 @@
 ## [Unreleased]
 
 
-<a name="v1.3.3"></a>
-## [v1.3.3] - 2024-07-28
+<a name="v1.3.4"></a>
+## [v1.3.4] - 2024-08-22
+
+<a name="example/v1.3.4"></a>
+## [example/v1.3.4] - 2024-08-22
+### Bug Fixes
+- 修复genrest模板中查询参数解析的URL引用错误
+- 修复rest代码生成器没有路径参数时import错误
+
+### Features
+- 增加处理原生http的能力
+
 
 <a name="contrib/polaris/v1.3.3"></a>
 ## [contrib/polaris/v1.3.3] - 2024-07-28
+
+<a name="v1.3.3"></a>
+## [v1.3.3] - 2024-07-28
 
 <a name="example/v1.3.3"></a>
 ## [example/v1.3.3] - 2024-07-28
@@ -25,17 +38,17 @@
 <a name="contrib/otelexporters/v1.3.1"></a>
 ## [contrib/otelexporters/v1.3.1] - 2024-05-02
 
+<a name="contrib/polaris/v1.3.1"></a>
+## [contrib/polaris/v1.3.1] - 2024-05-02
+
+<a name="contrib/redis/v1.3.1"></a>
+## [contrib/redis/v1.3.1] - 2024-05-02
+
 <a name="contrib/gorm/v1.3.1"></a>
 ## [contrib/gorm/v1.3.1] - 2024-05-02
 
 <a name="example/v1.3.1"></a>
 ## [example/v1.3.1] - 2024-05-02
-
-<a name="contrib/redis/v1.3.1"></a>
-## [contrib/redis/v1.3.1] - 2024-05-02
-
-<a name="contrib/polaris/v1.3.1"></a>
-## [contrib/polaris/v1.3.1] - 2024-05-02
 ### Code Refactoring
 - 重写logging引用
 - 重构可观察性相关功能，添加stats中间扩展
@@ -197,16 +210,18 @@
 - initial version source code
 
 
-[Unreleased]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.3...HEAD
-[v1.3.3]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/polaris/v1.3.3...v1.3.3
-[contrib/polaris/v1.3.3]: https://github.com/imkuqin-zw/yggdrasil/compare/example/v1.3.3...contrib/polaris/v1.3.3
+[Unreleased]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.4...HEAD
+[v1.3.4]: https://github.com/imkuqin-zw/yggdrasil/compare/example/v1.3.4...v1.3.4
+[example/v1.3.4]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/polaris/v1.3.3...example/v1.3.4
+[contrib/polaris/v1.3.3]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.3...contrib/polaris/v1.3.3
+[v1.3.3]: https://github.com/imkuqin-zw/yggdrasil/compare/example/v1.3.3...v1.3.3
 [example/v1.3.3]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.1...example/v1.3.3
 [v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/otelexporters/v1.3.1...v1.3.1
-[contrib/otelexporters/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/gorm/v1.3.1...contrib/otelexporters/v1.3.1
+[contrib/otelexporters/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/polaris/v1.3.1...contrib/otelexporters/v1.3.1
+[contrib/polaris/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/redis/v1.3.1...contrib/polaris/v1.3.1
+[contrib/redis/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/gorm/v1.3.1...contrib/redis/v1.3.1
 [contrib/gorm/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/example/v1.3.1...contrib/gorm/v1.3.1
-[example/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/redis/v1.3.1...example/v1.3.1
-[contrib/redis/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/polaris/v1.3.1...contrib/redis/v1.3.1
-[contrib/polaris/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.2.2...contrib/polaris/v1.3.1
+[example/v1.3.1]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.2.2...example/v1.3.1
 [v1.2.2]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.2.1...v1.2.2
 [v1.2.1]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.1.9...v1.2.1
 [v1.1.9]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.1.8...v1.1.9

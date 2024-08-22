@@ -72,3 +72,9 @@ type restRouterInfo struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 }
+
+type RestRawHandlerDesc struct {
+	Method  string
+	Path    string
+	Handler http.HandlerFunc
+}

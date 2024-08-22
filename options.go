@@ -42,15 +42,16 @@ type restServiceDesc struct {
 }
 
 type options struct {
-	serviceDesc     map[*server.ServiceDesc]interface{}
-	restServiceDesc map[*server.RestServiceDesc]restServiceDesc
-	server          server.Server
-	governor        *governor.Server
-	registry        registry.Registry
-	shutdownTimeout time.Duration
-	startBeforeHook []func() error
-	stopBeforeHook  []func() error
-	stopAfterHook   []func() error
+	serviceDesc       map[*server.ServiceDesc]interface{}
+	restServiceDesc   map[*server.RestServiceDesc]restServiceDesc
+	restRawHandleDesc []*server.RestRawHandlerDesc
+	server            server.Server
+	governor          *governor.Server
+	registry          registry.Registry
+	shutdownTimeout   time.Duration
+	startBeforeHook   []func() error
+	stopBeforeHook    []func() error
+	stopAfterHook     []func() error
 }
 
 func (opts *options) getAppOpts() []application.Option {
@@ -124,6 +125,13 @@ func WithRestServiceDesc(desc *server.RestServiceDesc, impl interface{}, prefix 
 			ss:     impl,
 			Prefix: prefix,
 		}
+		return nil
+	}
+}
+
+func WithRestRawHandleDesc(desc ...*server.RestRawHandlerDesc) Option {
+	return func(opts *options) error {
+		opts.restRawHandleDesc = append(opts.restRawHandleDesc, desc...)
 		return nil
 	}
 }

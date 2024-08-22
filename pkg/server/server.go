@@ -89,7 +89,7 @@ type server struct {
 	restEnable bool
 }
 
-func NetServer() Server {
+func NewServer() Server {
 	svr = &server{
 		services:       map[string]*ServiceInfo{},
 		servicesDesc:   map[string][]methodInfo{},
@@ -159,6 +159,18 @@ func (s *server) RegisterRestService(sd *RestServiceDesc, ss interface{}, prefix
 		logger.Fatalf("Server.RegisterService found the handler of type %v that does not satisfy %v", st, ht)
 	}
 	s.registerRest(sd, ss, prefix...)
+}
+
+func (s *server) RegisterRestRawHandlers(sd ...*RestRawHandlerDesc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, item := range sd {
+		s.restRouterDesc = append(s.restRouterDesc, restRouterInfo{
+			Method: item.Method,
+			Path:   item.Path,
+		})
+		s.restSvr.RawHandle(item.Method, item.Path, item.Handler)
+	}
 }
 
 func (s *server) Stop() error {
@@ -254,7 +266,7 @@ func (s *server) initInterceptor() {
 func (s *server) initRemoteServer() {
 	protocols := config.Get(config.KeyServerProtocol).StringSlice()
 	if len(protocols) == 0 {
-		logger.Fatal(errors.New("server protocols can not be empty"))
+		return
 	}
 	for _, protocol := range protocols {
 		builder := remote.GetServerBuilder(protocol)
@@ -333,7 +345,7 @@ func (s *server) registerRest(sd *RestServiceDesc, ss interface{}, prefix ...str
 			Method: method,
 			Path:   path,
 		})
-		s.restSvr.Handle(method, path, func(w http.ResponseWriter, r *http.Request) (interface{}, error) {
+		s.restSvr.RpcHandle(method, path, func(w http.ResponseWriter, r *http.Request) (interface{}, error) {
 			return handler(w, r, ss, s.unaryInterceptor)
 		})
 	}

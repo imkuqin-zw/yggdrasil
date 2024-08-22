@@ -17,8 +17,7 @@ func RegisterBuilder(name string, f Builder) {
 }
 
 func GetMiddlewares(names ...string) chi.Middlewares {
-	var handlers = make(chi.Middlewares, 0, len(names)+1)
-	handlers = append(handlers, newMarshalerMiddleware())
+	var handlers = make(chi.Middlewares, 0, len(names))
 	for _, item := range names {
 		if f, ok := builder[item]; ok {
 			handlers = append(handlers, f())

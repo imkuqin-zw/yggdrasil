@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 
 	"github.com/imkuqin-zw/yggdrasil"
 	librarypb "github.com/imkuqin-zw/yggdrasil/example/protogen/library"
@@ -27,6 +28,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
+	"github.com/imkuqin-zw/yggdrasil/pkg/server"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 )
 
@@ -54,6 +56,11 @@ func (s *LibraryImpl) GetBook(ctx context.Context, request *librarypb2.GetBookRe
 	return &librarypb2.Book{Name: request.Name}, nil
 }
 
+func WebHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("hello web"))
+}
+
 func main() {
 	if err := config.LoadSource(file.NewSource("./config.yaml", false)); err != nil {
 		logger.FatalField("fault to load config file", logger.Err(err))
@@ -64,6 +71,11 @@ func main() {
 	if err := yggdrasil.Serve(
 		yggdrasil.WithServiceDesc(&librarypb2.LibraryServiceServiceDesc, ss),
 		yggdrasil.WithRestServiceDesc(&librarypb2.LibraryServiceRestServiceDesc, ss),
+		yggdrasil.WithRestRawHandleDesc(&server.RestRawHandlerDesc{
+			Method:  http.MethodGet,
+			Path:    "/web",
+			Handler: WebHandler,
+		}),
 	); err != nil {
 		logger.FatalField("the application was ended forcefully ", logger.Err(err))
 		logger.Fatal(err)

@@ -6,6 +6,8 @@ yggdrasil:
   rest:
     enable: true
     port: 3000
+    middleware:
+      all: "logger"
 
   remote:
     protocol:

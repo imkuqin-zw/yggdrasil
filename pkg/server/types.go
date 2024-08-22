@@ -14,7 +14,9 @@
 
 package server
 
-import "github.com/imkuqin-zw/yggdrasil/pkg"
+import (
+	"github.com/imkuqin-zw/yggdrasil/pkg"
+)
 
 type Endpoint interface {
 	Scheme() string
@@ -26,6 +28,7 @@ type Endpoint interface {
 type Server interface {
 	RegisterService(sd *ServiceDesc, ss interface{})
 	RegisterRestService(sd *RestServiceDesc, ss interface{}, prefix ...string)
+	RegisterRestRawHandlers(sd ...*RestRawHandlerDesc)
 	Serve(startFlag chan<- struct{}) error
 	Stop() error
 	Endpoints() []Endpoint

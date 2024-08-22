@@ -199,20 +199,19 @@ func initGovernor(opts *options) {
 }
 
 func initServer(opts *options) {
-	var svr server.Server
-	if len(opts.serviceDesc) > 0 {
-		svr = server.NetServer()
-		for k, v := range opts.serviceDesc {
-			svr.RegisterService(k, v)
-		}
+	if len(opts.serviceDesc) == 0 && len(opts.restServiceDesc) == 0 && len(opts.restRawHandleDesc) == 0 {
+		return
 	}
-	if len(opts.restServiceDesc) > 0 {
-		if svr == nil {
-			svr = server.NetServer()
-		}
-		for k, v := range opts.restServiceDesc {
-			svr.RegisterRestService(k, v.ss, v.Prefix...)
-		}
+	svr := server.NewServer()
+	for k, v := range opts.serviceDesc {
+		svr.RegisterService(k, v)
+	}
+	for k, v := range opts.restServiceDesc {
+		svr.RegisterRestService(k, v.ss, v.Prefix...)
+	}
+
+	if len(opts.restRawHandleDesc) > 0 {
+		svr.RegisterRestRawHandlers(opts.restRawHandleDesc...)
 	}
 	opts.server = svr
 }

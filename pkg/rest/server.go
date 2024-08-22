@@ -13,7 +13,8 @@ type ServerInfo interface {
 }
 
 type Server interface {
-	Handle(method, path string, f HandlerFunc)
+	RpcHandle(method, path string, f HandlerFunc)
+	RawHandle(method, path string, h http.HandlerFunc)
 	Start() error
 	Serve() error
 	Stop() error

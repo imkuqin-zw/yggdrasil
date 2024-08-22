@@ -8,6 +8,10 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/rest/marshaler"
 )
 
+func init() {
+	RegisterBuilder("marshaler", newMarshalerMiddleware)
+}
+
 func newMarshalerMiddleware() func(http.Handler) http.Handler {
 	marshalerSupport := config.GetString(config.KeyRestMarshalerSupport, "jsonpb")
 	names := strings.Split(marshalerSupport, ",")

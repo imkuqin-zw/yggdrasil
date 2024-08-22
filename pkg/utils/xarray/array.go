@@ -67,3 +67,17 @@ func RemoveEmptyStrings(arr []string) []string {
 	}
 	return arr[:j]
 }
+
+func RemoveDuplicates[T comparable](slc []T) []T {
+	seen := make(map[T]bool)
+	j := 0
+	for _, value := range slc {
+		if _, ok := seen[value]; !ok {
+			seen[value] = true
+			slc[j] = value
+			j++
+		}
+	}
+
+	return slc[:j]
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/rest/marshaler"
 	"github.com/imkuqin-zw/yggdrasil/pkg/rest/middleware"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
+	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xarray"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xnet"
 	"github.com/pkg/errors"
 	"google.golang.org/genproto/googleapis/rpc/code"
@@ -31,7 +32,11 @@ type Config struct {
 	AcceptHeader string
 	OutHeader    string
 	OutTrailer   string
-	Middleware   string
+	Middleware   struct {
+		Rpc string
+		Web string
+		All string
+	}
 }
 
 type serverInfo struct {
@@ -51,11 +56,13 @@ func (s *serverInfo) GetAddress() string {
 // It matches http requests to patterns and invokes the corresponding handler.
 type ServeMux struct {
 	chi.Router
-	svr      *http.Server
-	mu       sync.Mutex
-	listener net.Listener
-	stopped  bool
-	started  bool
+	rpcRouter chi.Router
+	webRouter chi.Router
+	svr       *http.Server
+	mu        sync.Mutex
+	listener  net.Listener
+	stopped   bool
+	started   bool
 
 	info *serverInfo
 
@@ -74,10 +81,30 @@ func NewServer() Server {
 	address := fmt.Sprintf("%s:%d", ip, cfg.Port)
 
 	r := chi.NewMux()
-	middlewares := middleware.GetMiddlewares(strings.Split(cfg.Middleware, ",")...)
-	r.Use(middlewares...)
+
+	allMiddlewares := xarray.RemoveDuplicates(
+		strings.Split(cfg.Middleware.All, ","),
+	)
+	r.Use(middleware.GetMiddlewares(allMiddlewares...)...)
+
+	rpcMiddlewares := xarray.RemoveDuplicates(strings.Split(
+		"marshaler,"+cfg.Middleware.Rpc, ",",
+	))
+
+	webMiddlewares := xarray.RemoveDuplicates(
+		strings.Split(cfg.Middleware.Web, ","),
+	)
+
+	rpcRouter := r.Group(func(r chi.Router) {
+		r.Use(middleware.GetMiddlewares(rpcMiddlewares...)...)
+	})
+	webRouter := r.Group(func(r chi.Router) {
+		r.Use(middleware.GetMiddlewares(webMiddlewares...)...)
+	})
 	return &ServeMux{
-		Router: r,
+		Router:    r,
+		rpcRouter: rpcRouter,
+		webRouter: webRouter,
 		info: &serverInfo{
 			address:    address,
 			attributes: map[string]string{},
@@ -89,9 +116,8 @@ func NewServer() Server {
 	}
 }
 
-// Handle associates "h" to the pair of HTTP method and path pattern.
-func (s *ServeMux) Handle(meth, path string, f HandlerFunc) {
-	s.MethodFunc(meth, path, func(w http.ResponseWriter, r *http.Request) {
+func (s *ServeMux) RpcHandle(meth, path string, f HandlerFunc) {
+	s.rpcRouter.MethodFunc(meth, path, func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		ctx = metadata.WithStreamContext(ctx)
 		ctx = metadata.WithInContext(ctx, s.extractInMetadata(r))
@@ -104,6 +130,10 @@ func (s *ServeMux) Handle(meth, path string, f HandlerFunc) {
 		}
 		s.successHandler(w, r, res.(proto.Message))
 	})
+}
+
+func (s *ServeMux) RawHandle(meth, path string, h http.HandlerFunc) {
+	s.webRouter.MethodFunc(meth, path, h)
 }
 
 func (s *ServeMux) Start() error {

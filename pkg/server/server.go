@@ -162,6 +162,9 @@ func (s *server) RegisterRestService(sd *RestServiceDesc, ss interface{}, prefix
 }
 
 func (s *server) RegisterRestRawHandlers(sd ...*RestRawHandlerDesc) {
+	if !s.restEnable {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, item := range sd {

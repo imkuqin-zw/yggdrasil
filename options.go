@@ -47,6 +47,7 @@ type options struct {
 	restRawHandleDesc []*server.RestRawHandlerDesc
 	server            server.Server
 	governor          *governor.Server
+	internalSvr       []application.InternalServer
 	registry          registry.Registry
 	shutdownTimeout   time.Duration
 	startBeforeHook   []func() error
@@ -63,6 +64,7 @@ func (opts *options) getAppOpts() []application.Option {
 		application.WithBeforeStartHook(opts.startBeforeHook...),
 		application.WithBeforeStopHook(opts.stopBeforeHook...),
 		application.WithAfterStopHook(opts.stopAfterHook...),
+		application.WithInternalServer(opts.internalSvr...),
 	}
 }
 
@@ -132,6 +134,13 @@ func WithRestServiceDesc(desc *server.RestServiceDesc, impl interface{}, prefix 
 func WithRestRawHandleDesc(desc ...*server.RestRawHandlerDesc) Option {
 	return func(opts *options) error {
 		opts.restRawHandleDesc = append(opts.restRawHandleDesc, desc...)
+		return nil
+	}
+}
+
+func WithInternalServer(svr ...application.InternalServer) Option {
+	return func(opts *options) error {
+		opts.internalSvr = append(opts.internalSvr, svr...)
 		return nil
 	}
 }

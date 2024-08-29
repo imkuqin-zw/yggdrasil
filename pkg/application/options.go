@@ -75,3 +75,10 @@ func WithGovernor(svr *governor.Server) Option {
 		return nil
 	}
 }
+
+func WithInternalServer(svr ...InternalServer) Option {
+	return func(application *Application) error {
+		application.internalSvr = append(application.internalSvr, svr...)
+		return nil
+	}
+}

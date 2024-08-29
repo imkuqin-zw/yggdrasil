@@ -86,6 +86,8 @@ type Application struct {
 
 	governor *governor.Server
 
+	internalSvr []InternalServer
+
 	registryState int
 	registry      registry.Registry
 
@@ -221,6 +223,13 @@ func (app *Application) startServers() error {
 	eg.Go(func() error {
 		return app.governor.Serve()
 	})
+	for _, item := range app.internalSvr {
+		svr := item
+		eg.Go(func() error {
+			return svr.Serve()
+		})
+	}
+
 	eg.Go(func() error {
 		defer close(svrStarCh)
 		<-svrStarCh
@@ -232,14 +241,23 @@ func (app *Application) startServers() error {
 
 func (app *Application) stopServers() error {
 	eg := errgroup.Group{}
-	eg.Go(func() error {
-		return app.governor.Stop()
-	})
 	if app.server != nil {
 		eg.Go(func() error {
 			return app.server.Stop()
 		})
 	}
+
+	for _, item := range app.internalSvr {
+		svr := item
+		eg.Go(func() error {
+			return svr.Stop()
+		})
+	}
+
+	eg.Go(func() error {
+		return app.governor.Stop()
+	})
+
 	return eg.Wait()
 }
 

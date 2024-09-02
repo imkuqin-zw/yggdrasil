@@ -30,6 +30,11 @@ func local_handler_{{$.ServiceType}}_{{ .Name }}_{{.Num}}(w {{$.HttpPkg}}Respons
 				return nil, {{$.StatusPkg}}New({{$.CodePkg}}Code_INVALID_ARGUMENT, err)
 			}
 		{{- end}}
+	
+		if unaryInt == nil {
+			return  server.({{$.ServiceType}}Server).{{$method.Name}}(r.Context(), protoReq)
+		}
+
 		info := &interceptor.UnaryServerInfo{
 			Server:     server,
 			FullMethod: "{{$.ServiceName}}/{{ .Name }}",

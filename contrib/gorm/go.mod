@@ -17,6 +17,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.0
 	github.com/imkuqin-zw/yggdrasil v0.0.0-00010101000000-000000000000
 	github.com/microsoft/go-mssqldb v1.6.0
+	gorm.io/driver/sqlite v1.5.6
 )
 
 require (
@@ -28,6 +29,7 @@ require (
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/crypto v0.12.0 // indirect

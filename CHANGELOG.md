@@ -2,6 +2,24 @@
 ## [Unreleased]
 
 
+<a name="contrib/gorm/v1.3.8"></a>
+## [contrib/gorm/v1.3.8] - 2025-01-07
+### Features
+- **gorm:** gorm 添加 transaction
+
+
+<a name="contrib/gorm/v1.3.7"></a>
+## [contrib/gorm/v1.3.7] - 2024-09-23
+### Features
+- **gorm:** gorm 添加 sqlite driver
+
+
+<a name="v1.3.7"></a>
+## [v1.3.7] - 2024-09-02
+### Bug Fixes
+- 修复rest代码生成器未判断unaryInt为空的问题
+
+
 <a name="v1.3.5"></a>
 ## [v1.3.5] - 2024-08-29
 ### Bug Fixes
@@ -219,7 +237,10 @@
 - initial version source code
 
 
-[Unreleased]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/gorm/v1.3.8...HEAD
+[contrib/gorm/v1.3.8]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/gorm/v1.3.7...contrib/gorm/v1.3.8
+[contrib/gorm/v1.3.7]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.7...contrib/gorm/v1.3.7
+[v1.3.7]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.5...v1.3.7
 [v1.3.5]: https://github.com/imkuqin-zw/yggdrasil/compare/v1.3.4...v1.3.5
 [v1.3.4]: https://github.com/imkuqin-zw/yggdrasil/compare/example/v1.3.4...v1.3.4
 [example/v1.3.4]: https://github.com/imkuqin-zw/yggdrasil/compare/contrib/polaris/v1.3.3...example/v1.3.4

@@ -47,15 +47,25 @@ type RegistryConfig struct {
 	RetryCount       *int
 	RegisterGovernor bool
 	RegisterRest     bool
+	MetaWithGovernor bool
 }
 
 type registry struct {
-	cfg      RegistryConfig
-	provider api.ProviderAPI
-	ids      []string
+	cfg             RegistryConfig
+	provider        api.ProviderAPI
+	ids             []string
+	governorAddress *string
 }
 
 func (r *registry) Register(ctx context.Context, info registry2.Instance) error {
+	for _, endpoint := range info.Endpoints() {
+		meta := endpoint.Metadata()
+		if meta[registry2.MDServerKind] == string(pkg.ServerKindGovernor) {
+			addr := endpoint.Address()
+			r.governorAddress = &addr
+			break
+		}
+	}
 	for _, endpoint := range info.Endpoints() {
 		meta := endpoint.Metadata()
 		serverKind := meta[registry2.MDServerKind]
@@ -108,6 +118,9 @@ func (r *registry) registerService(_ context.Context, info registry2.Instance, e
 		serviceName = fmt.Sprintf("%s.%s", serviceName, "rest")
 	}
 	metadata := make(map[string]string)
+	if r.cfg.MetaWithGovernor && r.governorAddress != nil && svrKind != string(pkg.ServerKindGovernor) {
+		metadata["governorAddress"] = *r.governorAddress
+	}
 	xmap.MergeKVMap(metadata, info.Metadata(), endpoint.Metadata())
 
 	service, err := r.provider.RegisterInstance(&api.InstanceRegisterRequest{

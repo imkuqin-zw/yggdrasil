@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 
@@ -53,7 +52,7 @@ func NewServer() *Server {
 	cfg.SetDefault()
 	var listener, err = net.Listen("tcp4", cfg.Address())
 	if err != nil {
-		log.Fatalf("governor start reason: %s", err.Error())
+		logger.FatalField("fault to start governor", logger.Err(err))
 	}
 	cfg.Host, cfg.Port = xnet.GetHostAndPortByAddr(listener.Addr())
 	return &Server{

@@ -1,11 +1,11 @@
 package prometheus
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/imkuqin-zw/yggdrasil/pkg"
 	"github.com/imkuqin-zw/yggdrasil/pkg/governor"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"github.com/imkuqin-zw/yggdrasil/pkg/otel"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
@@ -23,7 +23,7 @@ func builder(string) api.MeterProvider {
 	})
 	exporter, err := prometheus.New(prometheus.WithNamespace(pkg.Namespace()))
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	return metric.NewMeterProvider(metric.WithReader(exporter))
 }

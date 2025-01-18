@@ -4,12 +4,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -50,7 +50,7 @@ func populateFieldValues(v protoreflect.Message, fieldPath []string, values []st
 		if fd = fields.ByName(protoreflect.Name(fieldName)); fd == nil {
 			fd = fields.ByJSONName(fieldName)
 			if fd == nil {
-				log.Printf("field not found in %q: %q\n", v.Descriptor().FullName(), strings.Join(fieldPath, "."))
+				logger.Infof("field not found in %q: %q\n", v.Descriptor().FullName(), strings.Join(fieldPath, "."))
 				return nil
 			}
 		}

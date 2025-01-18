@@ -23,6 +23,7 @@ import (
 type Config struct {
 	ReceivedEvent bool `default:"true"`
 	SentEvent     bool `default:"true"`
+	EnableMetrics bool `default:"true"`
 }
 
 func getCfg() *Config {

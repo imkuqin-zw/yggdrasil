@@ -112,6 +112,9 @@ func GetClientHandler() Handler {
 		names := config.Get(config.Join(config.KeyStats, "client")).String("")
 		h := &handlerChain{handlers: make([]Handler, 0)}
 		for _, name := range strings.Split(names, ",") {
+			if name == "" {
+				continue
+			}
 			builder := GetHandlerBuilder(name)
 			if builder == nil {
 				logger.Warnf("fault to get stats handler builder: %s", name)

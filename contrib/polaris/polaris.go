@@ -17,6 +17,7 @@ package polaris
 import (
 	"sync"
 
+	"github.com/ghodss/yaml"
 	"github.com/imkuqin-zw/yggdrasil/pkg"
 	config2 "github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
@@ -43,9 +44,7 @@ var (
 
 var (
 	polarisContext      api.SDKContext
-	polarisConfig       config.Configuration
 	mutexPolarisContext sync.Mutex
-	oncePolarisConfig   sync.Once
 
 	DefaultNamespace = "default"
 )
@@ -58,22 +57,25 @@ func Context() (api.SDKContext, error) {
 		return polarisContext, nil
 	}
 	var err error
-	polarisContext, err = api.InitContextByConfig(Configuration())
+
+	polarisContext, err = api.InitContextByConfig(configuration())
 	return polarisContext, err
 }
 
-// Configuration get or init the global polaris configuration
-func Configuration() config.Configuration {
-	oncePolarisConfig.Do(func() {
-		cfg := &config.ConfigurationImpl{}
-		cfg.Init()
-		if err := config2.Scan(configKeyClient, cfg); err != nil {
+func configuration() config.Configuration {
+	buf := config2.Get(configKeyClient).Bytes()
+	if len(buf) != 0 {
+		var err error
+		buf, err = yaml.JSONToYAML(buf)
+		if err != nil {
 			logger.FatalField("fault to load polaris config", logger.Err(err))
 		}
-		cfg.SetDefault()
-		polarisConfig = cfg
-	})
-	return polarisConfig
+	}
+	cfg, err := config.LoadConfiguration(buf)
+	if err != nil {
+		logger.FatalField("fault to load polaris config", logger.Err(err))
+	}
+	return cfg
 }
 
 func buildSourceInfo() *model.ServiceInfo {

@@ -4,7 +4,9 @@ yggdrasil:
     version: 2.0.0
   server:
     protocol:
-      - "otlpgrpc"
+      - "grpc"
+  governor:
+    port: 3000
 
   remote:
     logger:
@@ -28,10 +30,18 @@ polaris:
     global:
       serverConnector:
         addresses:
-          - 18.140.59.96:31591
+          - "192.168.1.5:8091"
       statReporter:
         enable: true
         chain:
           - prometheus
+        plugin:
+          prometheus:
+            type: "push"
+            #            metricPort: 3000
+            address: "192.168.1.5:9091"
+            interval: "10s"
   registry:
     registerGovernor: true
+    metaWithGovernor: true
+  source: "polaris_demo_server.yaml"

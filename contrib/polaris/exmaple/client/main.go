@@ -103,7 +103,7 @@ func (s *EchoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	//err := r.ParseForm()
 	//if nil != err {
-	//	log.Printf("fail to parse request form: %v\n", err)
+	//	logger.Debugf("fail to parse request form: %v\n", err)
 	//	w.WriteHeader(500)
 	//	_, _ = w.Write([]byte(err.Error()))
 	//	return
@@ -117,21 +117,21 @@ func (s *EchoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	params, _ := url.ParseQuery(r.URL.RawQuery)
 
 	value := params.Get("value")
-	log.Printf("receive value is %s\n", value)
+	logger.Debugf("receive value is %s\n", value)
 	tagVal := params.Get("tag")
-	log.Printf("receive tag is %s\n", tagVal)
+	logger.Debugf("receive tag is %s\n", tagVal)
 	//var value string
 	//if len(values) > 0 {
 	//	value = values[0]
 	//}
 
 	counts := params.Get("count")
-	log.Printf("receive count is %s\n", counts)
+	logger.Debugf("receive count is %s\n", counts)
 	count := defaultCount
 	if len(counts) > 0 {
 		v, err := strconv.Atoi(counts)
 		if nil != err {
-			log.Printf("parse count value %s into int fail, err: %s", counts, err)
+			logger.Debugf("parse count value %s into int fail, err: %s", counts, err)
 		}
 		if v > 0 {
 			count = v

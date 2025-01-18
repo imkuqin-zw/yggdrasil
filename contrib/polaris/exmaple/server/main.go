@@ -17,9 +17,9 @@ package main
 import (
 	"context"
 	flag2 "flag"
-	"fmt"
 
 	"github.com/imkuqin-zw/yggdrasil"
+	"github.com/imkuqin-zw/yggdrasil/contrib/polaris"
 	_ "github.com/imkuqin-zw/yggdrasil/contrib/polaris"
 	"github.com/imkuqin-zw/yggdrasil/contrib/polaris/exmaple/common/proto"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
@@ -50,11 +50,27 @@ func main() {
 	if err := config.LoadSource(flag.NewSource()); err != nil {
 		logger.FatalField("fault to load config file", logger.Err(err))
 	}
+
+	loadConfig()
+
 	name := config.Get("server.name").String("0")
-	fmt.Println("server_name:", name)
-	if err := yggdrasil.Run("github.com.imkuqin_zw.yggdrasil_polaris.example.server."+name,
+	svrName := "github.com.imkuqin_zw.yggdrasil_polaris.example.server." + name
+
+	if err := yggdrasil.Run(svrName,
 		yggdrasil.WithServiceDesc(&helloword.GreeterServiceDesc, &GreeterCircuitBreakerService{}),
 	); err != nil {
 		logger.FatalField("the application was ended forcefully ", logger.Err(err))
+	}
+}
+
+func loadConfig() {
+	namespace := config.Get(config.KeyAppNamespace).String("default")
+	sourceFile := config.GetString("polaris.source", "polaris_demo_server.yaml")
+	sc, err := polaris.NewConfig(namespace, "yggdrasil", sourceFile)
+	if err != nil {
+		logger.FatalField("fault to create polaris data source", logger.Err(err))
+	}
+	if err := config.LoadSource(sc); err != nil {
+		logger.FatalField("fault to load polaris data config", logger.Err(err))
 	}
 }

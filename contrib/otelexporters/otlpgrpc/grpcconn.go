@@ -53,7 +53,7 @@ func initGrpcConn() {
 	defer cancel()
 	conn, err := grpc.DialContext(ctx, cfg.Endpoint,
 		grpc.WithTransportCredentials(creds),
-		grpc.WithBlock(),
+		//grpc.WithBlock(),
 	)
 	if err != nil {
 		logger.FatalField("failed to create gRPC connection to collector", logger.Err(err))

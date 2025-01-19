@@ -11,7 +11,6 @@ require (
 )
 
 require (
-	github.com/imkuqin-zw/yggdrasil v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.19.0
 	go.opentelemetry.io/otel v1.24.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.24.0
@@ -42,5 +41,3 @@ require (
 	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
-
-replace github.com/imkuqin-zw/yggdrasil => ../../

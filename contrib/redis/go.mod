@@ -3,7 +3,6 @@ module github.com/imkuqin-zw/yggdrasil/contrib/redis
 go 1.21
 
 require (
-	github.com/imkuqin-zw/yggdrasil v0.0.0-00010101000000-000000000000
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
 	github.com/redis/go-redis/v9 v9.4.0
 )
@@ -22,5 +21,3 @@ require (
 	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
-
-replace github.com/imkuqin-zw/yggdrasil => ../../

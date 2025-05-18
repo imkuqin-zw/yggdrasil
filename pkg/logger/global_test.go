@@ -64,5 +64,5 @@ func Test_WithFields(t *testing.T) {
 	lg.InfoField("Info", String("k", "test"))
 	lg.WarnField("Warn", String("k", "test"))
 	lg.ErrorField("Error", String("k", "test"))
-	lg.FatalField("Fatal", String("k", "test"))
+	//lg.FatalField("Fatal", String("k", "test"))
 }

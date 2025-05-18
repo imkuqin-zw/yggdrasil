@@ -352,15 +352,12 @@ func (enc *jsonEncoder) clone() *jsonEncoder {
 
 func (enc *jsonEncoder) Encode(fields []Field) (*buffer.Buffer, error) {
 	final := enc.clone()
-	final.buf.AppendByte('{')
 	if enc.buf.Len() > 0 {
 		final.addElementSeparator()
 		_, _ = final.buf.Write(enc.buf.Bytes())
 	}
 	addFields(final, fields)
 	final.closeOpenNamespaces()
-	final.buf.AppendByte('}')
-
 	ret := final.buf
 	putJSONEncoder(final)
 	return ret, nil

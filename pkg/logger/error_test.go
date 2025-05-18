@@ -87,9 +87,9 @@ func TestErrorEncoding(t *testing.T) {
 			want: map[string]interface{}{
 				"err": "foo; bar; baz",
 				"errCauses": []interface{}{
-					map[string]interface{}{"reason": "foo"},
-					map[string]interface{}{"reason": "bar"},
-					map[string]interface{}{"reason": "baz"},
+					map[string]interface{}{"error": "foo"},
+					map[string]interface{}{"error": "bar"},
+					map[string]interface{}{"error": "baz"},
 				},
 			},
 		},
@@ -99,12 +99,12 @@ func TestErrorEncoding(t *testing.T) {
 			want: map[string]interface{}{
 				"e": "great sadness",
 				"eCauses": []interface{}{
-					map[string]interface{}{"reason": "foo"},
+					map[string]interface{}{"error": "foo"},
 					map[string]interface{}{
-						"reason": "bar; baz",
+						"error": "bar; baz",
 						"errorCauses": []interface{}{
-							map[string]interface{}{"reason": "bar"},
-							map[string]interface{}{"reason": "baz"},
+							map[string]interface{}{"error": "bar"},
+							map[string]interface{}{"error": "baz"},
 						},
 					},
 				},
@@ -119,27 +119,22 @@ func TestErrorEncoding(t *testing.T) {
 			},
 		},
 		{
-			k: "reason",
+			k: "error",
 			iface: multierr.Combine(
-				richErrors.WithMessage(
+				fmt.Errorf("hello: %w",
 					multierr.Combine(errors.New("foo"), errors.New("bar")),
-					"hello",
 				),
 				errors.New("baz"),
-				richErrors.WithMessage(errors.New("qux"), "world"),
+				fmt.Errorf("world: %w", errors.New("qux")),
 			),
 			want: map[string]interface{}{
-				"reason": "hello: foo; bar; baz; world: qux",
-				"errorCauses": []interface{}{
-					map[string]interface{}{
-						"reason": "hello: foo; bar",
-						"errorVerbose": "the following errors occurred:\n" +
-							" -  foo\n" +
-							" -  bar\n" +
-							"hello",
+				"error": "hello: foo; bar; baz; world: qux",
+				"errorCauses": []any{
+					map[string]any{
+						"error": "hello: foo; bar",
 					},
-					map[string]interface{}{"reason": "baz"},
-					map[string]interface{}{"reason": "world: qux", "errorVerbose": "qux\nworld"},
+					map[string]any{"error": "baz"},
+					map[string]any{"error": "world: qux"},
 				},
 			},
 		},

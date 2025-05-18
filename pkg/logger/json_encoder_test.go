@@ -21,6 +21,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -115,7 +116,7 @@ func TestJSONEncodeEntry(t *testing.T) {
 		t.Run(tt.desc, func(t *testing.T) {
 			buf, err := enc.Encode(tt.fields)
 			if assert.NoError(t, err, "Unexpected JSON encoding reason.") {
-				assert.JSONEq(t, tt.expected, buf.String(), "Incorrect encoded JSON entry.")
+				assert.JSONEq(t, tt.expected, fmt.Sprintf("{%s}", buf.String()), "Incorrect encoded JSON entry.")
 			}
 			buf.Free()
 		})
@@ -160,7 +161,7 @@ func TestJSONEmptyConfig(t *testing.T) {
 
 			buf, err := enc.Encode([]Field{tt.field})
 			if assert.NoError(t, err, "Unexpected JSON encoding reason.") {
-				assert.JSONEq(t, tt.expected, buf.String(), "Incorrect encoded JSON entry.")
+				assert.JSONEq(t, tt.expected, fmt.Sprintf("{%s}", buf.String()), "Incorrect encoded JSON entry.")
 			}
 
 			buf.Free()
@@ -213,7 +214,7 @@ func TestJSONCustomReflectedEncoder(t *testing.T) {
 			enc := NewJSONEncoder(EncoderConfig{})
 			buf, err := enc.Encode([]Field{tt.field})
 			if assert.NoError(t, err, "Unexpected JSON encoding reason.") {
-				assert.JSONEq(t, tt.expected, buf.String(), "Incorrect encoded JSON entry.")
+				assert.JSONEq(t, tt.expected, fmt.Sprintf("{%s}", buf.String()), "Incorrect encoded JSON entry.")
 			}
 			buf.Free()
 		})

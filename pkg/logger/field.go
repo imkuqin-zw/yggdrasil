@@ -243,6 +243,26 @@ var (
 	_maxTimeInt64 = time.Unix(0, math.MaxInt64)
 )
 
+// Skip constructs a no-op field, which is often useful when handling invalid
+// inputs in other Field constructors.
+func Skip() Field {
+	return Field{Type: SkipType}
+}
+
+func ignoreSkip(fields []Field) []Field {
+	if len(fields) == 0 {
+		return fields
+	}
+	j := 0
+	for i := 0; i < len(fields); i++ {
+		if fields[i].Type != SkipType {
+			fields[j] = fields[i]
+			j++
+		}
+	}
+	return fields[:j]
+}
+
 // nilField returns a field which will marshal explicitly as nil. See motivation
 // in https://github.com/uber-go/zap/issues/753 . If we ever make breaking
 // changes and add NilType and ObjectEncoder.AddNil, the

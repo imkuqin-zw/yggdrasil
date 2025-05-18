@@ -16,6 +16,7 @@ package logger
 
 import (
 	"errors"
+	"log/slog"
 )
 
 var (
@@ -32,12 +33,14 @@ func init() {
 	}
 	printStack = true
 	global = NewLogger(LvDebug, NewWriter(&WriterCfg{OpenMsgFormat: true}))
+	slog.SetDefault(slog.New(NewSlogHandler(global, nil)))
 }
 
 var errUnmarshalNilLevel = errors.New("can't unmarshal a nil *Level")
 
 func SetLogger(lg *Logger) {
 	global = lg
+	slog.SetDefault(slog.New(NewSlogHandler(lg, nil)))
 }
 
 func SetDurationEncoder(de DurationEncoder) {

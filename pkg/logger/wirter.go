@@ -16,10 +16,11 @@ package logger
 
 import (
 	"log"
+	"time"
 )
 
 type Writer interface {
-	Write(lv Level, msg string, kvs ...interface{})
+	Write(lv Level, time time.Time, msg string, ext ...[]byte)
 }
 
 type WriterBuilder func() Writer

@@ -123,7 +123,7 @@ func (e *errArrayElem) MarshalLogArray(arr ArrayEncoder) error {
 }
 
 func (e *errArrayElem) MarshalLogObject(enc ObjectEncoder) error {
-	return encodeError("reason", e.err, enc)
+	return encodeError("error", e.err, enc)
 }
 
 func (e *errArrayElem) Free() {

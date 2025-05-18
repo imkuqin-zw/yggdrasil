@@ -15,10 +15,10 @@
 package logger
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
+	"time"
 )
 
 var _fieldsPool = newFieldsPool()
@@ -146,6 +146,7 @@ func (l *Logger) Clone() *Logger {
 }
 
 func (l *Logger) WithFields(fields ...Field) *Logger {
+	fields = ignoreSkip(fields)
 	newFields := make([]Field, len(l.fields)+len(fields))
 	copy(newFields, l.fields)
 	copy(newFields[len(l.fields):], fields)
@@ -155,11 +156,16 @@ func (l *Logger) WithFields(fields ...Field) *Logger {
 }
 
 func (l *Logger) mergeFields(fields ...Field) []Field {
+	fields = ignoreSkip(fields)
 	final := _fieldsPool.Get()
 	return append(append(final, l.fields...), fields...)
 }
 
 func (l *Logger) out(lv Level, format string, args []interface{}, fields ...Field) {
+	l.write(lv, time.Now(), format, args, fields...)
+}
+
+func (l *Logger) write(lv Level, t time.Time, format string, args []interface{}, fields ...Field) {
 	if !l.Enable(lv) {
 		return
 	}
@@ -176,12 +182,17 @@ func (l *Logger) out(lv Level, format string, args []interface{}, fields ...Fiel
 		defer _fieldsPool.Put(fields)
 	}
 	if len(fields) == 0 {
-		(*l.writer).Write(lv, msgBuf.String())
+		(*l.writer).Write(lv, t, msgBuf.String())
 		return
 	}
 	fieldsBuf, _ := enc.Encode(fields)
 	defer fieldsBuf.Free()
-	(*l.writer).Write(lv, msgBuf.String(), "ext", json.RawMessage(fieldsBuf.Bytes()))
+	if fieldsBuf.Len() > 0 {
+		(*l.writer).Write(lv, t, msgBuf.String(), fieldsBuf.Bytes())
+	} else {
+		(*l.writer).Write(lv, t, msgBuf.String())
+	}
+
 }
 
 func (l *Logger) printStack(fields ...Field) {

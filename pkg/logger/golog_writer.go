@@ -16,11 +16,10 @@ package logger
 
 import (
 	"fmt"
-	"log"
+	"os"
 	"runtime"
 	"time"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/logger/buffer"
 	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xcolor"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -68,12 +67,14 @@ type WriterFile struct {
 
 type WriterCfg struct {
 	OpenMsgFormat bool       `json:"openMsgFormat" yaml:"openMsgFormat"`
+	TimeFormat    string     `json:"timeFormat" yaml:"timeFormat"`
 	File          WriterFile `json:"file" yaml:"file"`
 }
 
 type writer struct {
-	level Level
-	write func(lv Level, msg string, kvs ...interface{})
+	level      Level
+	timeEncode func(t time.Time) string
+	write      func(lv Level, t time.Time, msg string, ext ...[]byte)
 }
 
 func NewWriter(cfg *WriterCfg) Writer {
@@ -83,10 +84,19 @@ func NewWriter(cfg *WriterCfg) Writer {
 	} else {
 		w.write = w.newConsoleWrite(cfg)
 	}
+	if cfg.TimeFormat != "" {
+		if cfg.File.Enable {
+			w.timeEncode = func(t time.Time) string { return fmt.Sprintf(`"%s"`, t.Format(cfg.TimeFormat)) }
+		} else {
+			w.timeEncode = func(t time.Time) string { return t.Format(cfg.TimeFormat) }
+		}
+	} else {
+		w.timeEncode = func(t time.Time) string { return fmt.Sprintf("%d", t.UnixMilli()) }
+	}
 	return w
 }
 
-func (l *writer) newFileWrite(cfg *WriterCfg) func(lv Level, msg string, kvs ...interface{}) {
+func (l *writer) newFileWrite(cfg *WriterCfg) func(lv Level, t time.Time, msg string, ext ...[]byte) {
 	ioWriter := &lumberjack.Logger{
 		Filename:   cfg.File.Filename,
 		MaxSize:    cfg.File.MaxSize,
@@ -95,54 +105,56 @@ func (l *writer) newFileWrite(cfg *WriterCfg) func(lv Level, msg string, kvs ...
 		LocalTime:  cfg.File.LocalTime,
 		Compress:   cfg.File.Compress,
 	}
-	return func(lv Level, msg string, kvs ...interface{}) {
+
+	return func(lv Level, t time.Time, msg string, ext ...[]byte) {
 		buf := Get()
 		defer buf.Free()
 		_ = buf.WriteByte('{')
-		_, _ = fmt.Fprintf(buf, `"ts":%d,`, time.Now().UnixMilli())
+		_, _ = fmt.Fprintf(buf, `"time":%s,`, l.timeEncode(t))
 		_, _ = buf.WriteString(`"level":"`)
 		_, _ = buf.WriteString(lv.String())
 		_, _ = buf.WriteString(`",`)
 		_, _ = buf.WriteString(`"msg":"`)
 		_, _ = buf.WriteString(msg)
 		_, _ = buf.WriteString(`"`)
-		if len(kvs) > 1 {
+		if len(ext) > 0 {
 			_ = buf.WriteByte(',')
+			_, _ = buf.Write(ext[0])
 		}
-		l.paris(buf, kvs)
 		_ = buf.WriteByte('}')
 		_, _ = fmt.Fprintln(ioWriter, buf.String())
 	}
 }
 
-func (l *writer) newConsoleWrite(cfg *WriterCfg) func(lv Level, msg string, kvs ...interface{}) {
+func (l *writer) newConsoleWrite(cfg *WriterCfg) func(lv Level, t time.Time, msg string, ext ...[]byte) {
 	var kvsMsgFormat string
 	if runtime.GOOS == "windows" {
-		kvsMsgFormat = "%-8s"
+		kvsMsgFormat = " %-8s"
 	} else {
 		kvsMsgFormat = "%-18s"
 	}
 	if cfg.OpenMsgFormat {
-		kvsMsgFormat += "%-31s "
+		kvsMsgFormat += " %-31s "
 	} else {
 		kvsMsgFormat += "%s "
 	}
-	lg := log.Default()
-	return func(lv Level, msg string, kvs ...interface{}) {
+	return func(lv Level, t time.Time, msg string, ext ...[]byte) {
 		buf := Get()
 		defer buf.Free()
+		_, _ = fmt.Fprint(buf, l.timeEncode(t), " ")
 		_, _ = fmt.Fprintf(buf, kvsMsgFormat, l.getLvMsg(lv), msg)
-		if len(kvs) >= 2 {
+		if len(ext) > 0 {
 			_ = buf.WriteByte('{')
-			l.paris(buf, kvs)
+			_, _ = buf.Write(ext[0])
 			_ = buf.WriteByte('}')
 		}
-		lg.Println(buf.String())
+		_ = buf.WriteByte('\n')
+		_, _ = os.Stderr.Write(buf.Bytes())
 	}
 }
 
-func (l *writer) Write(lv Level, msg string, kvs ...interface{}) {
-	l.write(lv, msg, kvs...)
+func (l *writer) Write(lv Level, t time.Time, msg string, ext ...[]byte) {
+	l.write(lv, t, msg, ext...)
 }
 
 func (l *writer) getLvMsg(lv Level) string {
@@ -159,19 +171,4 @@ func (l *writer) getLvMsg(lv Level) string {
 		return stdFaultMsg
 	}
 	return ""
-}
-
-func (l *writer) paris(buf *buffer.Buffer, kvs []interface{}) {
-	if len(kvs) < 2 {
-		return
-	}
-	re := defaultReflectedEncoder(buf)
-	_, _ = fmt.Fprintf(buf, `"%v":`, kvs[0])
-	_ = re.Encode(kvs[1])
-	buf.TrimNewline()
-	for i := 3; i < len(kvs); i += 2 {
-		_, _ = fmt.Fprintf(buf, `,"%v":`, kvs[i-1])
-		_ = re.Encode(kvs[i])
-		buf.TrimNewline()
-	}
 }

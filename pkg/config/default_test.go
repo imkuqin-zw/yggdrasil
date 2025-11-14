@@ -68,7 +68,7 @@ func TestConfig_GetContainerDelimiterKey(t *testing.T) {
 	data := Get("yggdrasil.client.{example.polaris.server}.gd").Bytes([]byte("not found"))
 	assert.Equal(t, []byte("not found"), data)
 	data = Get("yggdrasil.client.{example.polaris.server}").Bytes()
-	assert.Equal(t, []byte(`{"otlpgrpc":{"target":"127.0.0.1:30001"}}`), data)
+	assert.Equal(t, []byte(`{"grpc":{"target":"127.0.0.1:30001"}}`), data)
 }
 
 func TestConfig_matchKey(t *testing.T) {

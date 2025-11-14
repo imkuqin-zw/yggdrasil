@@ -151,10 +151,10 @@ func TestEnv_Delimiter(t *testing.T) {
 func TestEnv_ParseArray(t *testing.T) {
 	expected := map[string]map[string]interface{}{
 		"database": {
-			"host":       []string{"localhost", "127.0.0.1"},
+			"host":       []interface{}{"localhost", "127.0.0.1"},
 			"password":   "password",
 			"datasource": "user:password@tcp(localhost:port)/db?charset=utf8mb4&parseTime=True&loc=Local",
-			"port":       "3306",
+			"port":       float64(3306),
 		},
 	}
 

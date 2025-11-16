@@ -73,7 +73,7 @@ func (vs *values) Del(key string) error {
 			return nil
 		}
 	}
-	delete(tmp, key)
+	delete(tmp, paths[len(paths)-1])
 	return nil
 }
 
@@ -87,7 +87,7 @@ func (vs *values) Set(key string, val interface{}) error {
 			return nil
 		}
 	}
-	tmp[key] = val
+	tmp[paths[len(paths)-1]] = val
 	return nil
 }
 

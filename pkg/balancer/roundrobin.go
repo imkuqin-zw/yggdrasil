@@ -95,7 +95,7 @@ func (b *RoundRobin) GetPicker() Picker {
 func (b *RoundRobin) Update(values config.Values) {
 	endpoints := make([]*instance, 0)
 	if err := values.Get(config.KeySingleEndpoints).Scan(&endpoints); err != nil {
-		logger.ErrorField("fault to load endpoints config", logger.Err(err))
+		logger.ErrorField("failed to load endpoints config", logger.Err(err))
 		return
 	}
 	b.endpoint = endpoints

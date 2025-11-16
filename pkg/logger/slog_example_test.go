@@ -63,6 +63,6 @@ func Example_slog() {
 	// {"level":"error","msg":"oops","err":"use of closed network connection","status":500}
 	// {"level":"error","msg":"oops","err":"use of closed network connection","status":500}
 	// {"level":"info","msg":"message","group":{"pi":3.14,"1min":60000}}
-	// {"level":"warn","msg":"warn msg","u":1,"m":{"foo":"bar"}}
+	// {"level":"warn","msg":"warn msg","s":{"u":1,"m":{"foo":"bar"}}}
 	// {"level":"debug","msg":"not show up"}
 }

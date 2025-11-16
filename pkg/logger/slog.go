@@ -30,18 +30,18 @@ func (h *SlogHandler) Enabled(_ context.Context, level slog.Level) bool {
 func (h *SlogHandler) Handle(ctx context.Context, record slog.Record) error {
 	fields := make([]Field, 0, record.NumAttrs()+len(h.groups)+1)
 	fields = append(fields, Context(ctx))
-	var addedNamespace bool
+
+	// Always add groups first if there are any
+	if len(h.groups) > 0 {
+		fields = h.appendGroups(fields)
+	}
+
 	record.Attrs(func(attr slog.Attr) bool {
 		f := convertSlogAttrToField(attr)
-		if !addedNamespace && len(h.groups) > 0 && f.Type == SkipType {
-			// Namespaces are added only if at least one field is present
-			// to avoid creating empty groups.
-			fields = h.appendGroups(fields)
-			addedNamespace = true
-		}
 		fields = append(fields, f)
 		return true
 	})
+
 	h.lg.write(convertSlogLevel(record.Level), record.Time, record.Message, nil, fields...)
 	return nil
 }
@@ -49,29 +49,13 @@ func (h *SlogHandler) Handle(ctx context.Context, record slog.Record) error {
 // WithAttrs returns a new Handler whose attributes consist of
 // both the receiver's attributes and the arguments.
 func (h *SlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	fields := make([]Field, 0, len(attrs)+len(h.lg.fields))
-	var addedNamespace bool
-	for _, attr := range attrs {
-		f := convertSlogAttrToField(attr)
-		if !addedNamespace && len(h.groups) > 0 && f.Type != SkipType {
-			// Namespaces are added only if at least one field is present
-			// to avoid creating empty groups.
-			fields = h.appendGroups(fields)
-			addedNamespace = true
-		}
-		fields = append(fields, f)
-	}
+	// Clone current groups to new handler
+	newGroups := make([]string, len(h.groups))
+	copy(newGroups, h.groups)
 
-	for _, attr := range attrs {
-		f := convertSlogAttrToField(attr)
-		fields = append(fields, f)
-	}
 	cloned := *h
-	cloned.lg = h.lg.WithFields(fields...)
-	if addedNamespace {
-		// These groups have been applied so we can clear them.
-		cloned.groups = nil
-	}
+	cloned.groups = newGroups
+	// Groups are inherited and will be applied when handling records
 	return &cloned
 }
 

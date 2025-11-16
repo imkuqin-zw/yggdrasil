@@ -91,6 +91,12 @@ func (m *value) Int64(def ...int64) int64 {
 		return i
 	}
 
+	// Also handle int type
+	iInt, ok := m.val.(int)
+	if ok {
+		return int64(iInt)
+	}
+
 	str, ok := m.val.(string)
 	if !ok {
 		if len(def) == 0 {
@@ -126,6 +132,14 @@ func (m *value) Float64(def ...float64) float64 {
 		return f
 	}
 
+	// Also handle int and int64 types
+	if iInt, ok := m.val.(int); ok {
+		return float64(iInt)
+	}
+	if iInt64, ok := m.val.(int64); ok {
+		return float64(iInt64)
+	}
+
 	str, ok := m.val.(string)
 	if !ok {
 		if len(def) == 0 {
@@ -146,11 +160,6 @@ func (m *value) Float64(def ...float64) float64 {
 }
 
 func (m *value) Duration(def ...time.Duration) time.Duration {
-	v, ok := m.val.(time.Duration)
-	if ok {
-		return v
-	}
-
 	switch v := m.val.(type) {
 	case time.Duration:
 		return v

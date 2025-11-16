@@ -39,11 +39,12 @@ var (
 )
 
 func GetResolver(name string) (Resolver, error) {
-	mu.RLocker()
+	mu.RLock()
 	if r, ok := resolver[name]; ok {
 		mu.RUnlock()
 		return r, nil
 	}
+	mu.RUnlock()
 	mu.Lock()
 	defer mu.Unlock()
 	if r, ok := resolver[name]; ok {
@@ -53,7 +54,12 @@ func GetResolver(name string) (Resolver, error) {
 	if !ok {
 		return nil, fmt.Errorf("not found resolver builder, name: %s", name)
 	}
-	return f(name)
+	r, err := f(name)
+	if err != nil {
+		return nil, err
+	}
+	resolver[name] = r
+	return r, nil
 }
 
 func DelResolver(name string) error {
@@ -63,7 +69,11 @@ func DelResolver(name string) error {
 	if !ok {
 		return nil
 	}
-	return r.Close()
+	err := r.Close()
+	if err == nil {
+		delete(resolver, name)
+	}
+	return err
 }
 
 func RegisterBuilder(name string, f func(string) (Resolver, error)) {

@@ -15,364 +15,244 @@
 package xds
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"sync"
-	"time"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	config2 "github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	resolver2 "github.com/imkuqin-zw/yggdrasil/pkg/resolver"
-	"github.com/imkuqin-zw/yggdrasil/pkg/utils/xgo"
-
-	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// Resolver 基于XDS的服务发现解析器
-type Resolver struct {
-	client *xdsClient
-	cache  SnapshotCache
-
-	mu       sync.RWMutex
-	watchers map[string]*ServiceWatcher
-	closed   bool
+func init() {
+	resolver2.RegisterBuilder(name, newResolver)
 }
 
-// ServiceWatcher 服务监听器
-type ServiceWatcher struct {
-	resolver    *Resolver
-	serviceName string
-	cancel      context.CancelFunc
-	endpoints   []resolver2.Endpoint
-	callbacks   []func([]resolver2.Endpoint)
+// resolver implements the pkg/resolver.Resolver interface using xDS EDS
+type resolver struct {
+	client  *Client
+	mu      sync.RWMutex
+	closed  bool
+	watcher map[string]*watcherInstance
 }
 
-// NewResolver 创建XDS解析器
-func NewResolver(client *xdsClient) *Resolver {
-	return &Resolver{
-		client:   client,
-		cache:    client.cache,
-		watchers: make(map[string]*ServiceWatcher),
+// newResolver creates a new xDS resolver
+func newResolver(_ string) (resolver2.Resolver, error) {
+	client, err := GetClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get xDS client: %w", err)
 	}
+
+	rs := &resolver{
+		client:  client,
+		watcher: make(map[string]*watcherInstance),
+	}
+
+	return rs, nil
 }
 
-// Name 返回解析器名称
-func (r *Resolver) Name() string {
-	return name
-}
-
-// AddWatch 添加服务监听
-func (r *Resolver) AddWatch(serviceName string) error {
+// AddWatch starts watching a service for endpoint updates
+func (r *resolver) AddWatch(serviceName string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.closed {
-		return fmt.Errorf("resolver is closed")
+		return errors.New("resolver closed")
 	}
 
-	// 检查是否已在监听
-	if _, exists := r.watchers[serviceName]; exists {
-		return nil
+	if _, ok := r.watcher[serviceName]; ok {
+		return nil // Already watching
 	}
 
-	logger.InfoField("adding service watch", logger.String("service", serviceName))
-
-	// 创建服务监听器
-	ctx, cancel := context.WithCancel(context.Background())
-	watcher := &ServiceWatcher{
-		resolver:    r,
+	watcher := &watcherInstance{
 		serviceName: serviceName,
-		cancel:      cancel,
-		callbacks:   make([]func([]resolver2.Endpoint), 0),
+		resolver:    r,
 	}
 
-	// 启动监听
-	if err := watcher.start(ctx); err != nil {
-		cancel()
-		return fmt.Errorf("failed to start service watcher: %w", err)
-	}
-
-	r.watchers[serviceName] = watcher
-	return nil
-}
-
-// DelWatch 删除服务监听
-func (r *Resolver) DelWatch(serviceName string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	watcher, exists := r.watchers[serviceName]
-	if !exists {
-		return nil
-	}
-
-	logger.InfoField("removing service watch", logger.String("service", serviceName))
-
-	// 停止监听
-	watcher.stop()
-	delete(r.watchers, serviceName)
-
-	return nil
-}
-
-// Close 关闭解析器
-func (r *Resolver) Close() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.closed {
-		return nil
-	}
-
-	logger.InfoField("closing XDS resolver")
-
-	r.closed = true
-
-	// 停止所有监听器
-	for serviceName, watcher := range r.watchers {
-		watcher.stop()
-		delete(r.watchers, serviceName)
-	}
-
-	return nil
-}
-
-// start 启动服务监听
-func (w *ServiceWatcher) start(ctx context.Context) error {
-	// 启动定期刷新goroutine
-	xgo.Go(func() {
-		w.refreshLoop(ctx)
-	}, nil)
-
-	return nil
-}
-
-// stop 停止服务监听
-func (w *ServiceWatcher) stop() {
-	if w.cancel != nil {
-		w.cancel()
-	}
-}
-
-// refreshLoop 定期刷新服务端点
-func (w *ServiceWatcher) refreshLoop(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second) // 每5秒刷新一次
-	defer ticker.Stop()
-
-	// 立即执行一次刷新
-	w.refreshEndpoints()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			w.refreshEndpoints()
-		}
-	}
-}
-
-// refreshEndpoints 刷新端点列表
-func (w *ServiceWatcher) refreshEndpoints() {
-	// 从ResourceManager获取端点资源
-	endpointManager := w.resolver.client.GetResourceManager(resource.EndpointType)
-	if endpointManager == nil {
-		logger.DebugField("endpoint manager not found",
-			logger.String("service", w.serviceName))
-		return
-	}
-
-	resources := endpointManager.GetResources()
-	if len(resources) == 0 {
-		logger.DebugField("no endpoint resources found",
-			logger.String("service", w.serviceName))
-		return
-	}
-
-	// 转换为框架端点格式
-	var newEndpoints []resolver2.Endpoint
-	for _, resource := range resources {
-		// 简化实现：基于资源名称匹配服务
-		resourceName := getResourceName(resource)
-		if w.matchesService(resourceName) {
-			convertedEndpoints := w.convertResourceToEndpoints(resource)
-			newEndpoints = append(newEndpoints, convertedEndpoints...)
-		}
-	}
-
-	// 检查是否有变化
-	if !w.endpointsChanged(newEndpoints) {
-		return
-	}
-
-	w.endpoints = newEndpoints
-	logger.InfoField("endpoints updated",
-		logger.String("service", w.serviceName),
-		logger.Int("count", len(newEndpoints)))
-
-	// 通知回调函数
-	for _, callback := range w.callbacks {
-		callback(newEndpoints)
-	}
-}
-
-// matchesService 检查资源是否匹配服务
-func (w *ServiceWatcher) matchesService(resourceName string) bool {
-	// 简化匹配逻辑：检查资源名是否包含服务名
-	return resourceName == w.serviceName ||
-		resourceName == fmt.Sprintf("cluster.%s", w.serviceName) ||
-		resourceName == fmt.Sprintf("%s-endpoints", w.serviceName)
-}
-
-// convertResourceToEndpoints 转换资源为端点
-func (w *ServiceWatcher) convertResourceToEndpoints(resource types.Resource) []resolver2.Endpoint {
-	// 简化实现：基于资源类型创建端点
-	// 实际生产环境应该解析具体的XDS资源格式
-
-	endpoints := make([]resolver2.Endpoint, 0)
-
-	// 模拟创建端点
-	for i := 0; i < 3; i++ {
-		endpoint := &XDSEndpoint{
-			address:  fmt.Sprintf("%s-%d.example.com:8080", w.serviceName, i),
-			protocol: "grpc",
-			metadata: map[string]interface{}{
-				"service": w.serviceName,
-				"weight":  100,
-				"region":  "us-west-2",
-				"zone":    "us-west-2a",
-				"health":  "HEALTHY",
-				"version": "v1.0.0",
-			},
-		}
-		endpoints = append(endpoints, endpoint)
-	}
-
-	return endpoints
-}
-
-// endpointsChanged 检查端点是否发生变化
-func (w *ServiceWatcher) endpointsChanged(newEndpoints []resolver2.Endpoint) bool {
-	if len(w.endpoints) != len(newEndpoints) {
-		return true
-	}
-
-	// 简单比较地址
-	oldAddresses := make(map[string]bool)
-	for _, endpoint := range w.endpoints {
-		oldAddresses[endpoint.GetAddress()] = true
-	}
-
-	for _, endpoint := range newEndpoints {
-		if !oldAddresses[endpoint.GetAddress()] {
-			return true
-		}
-	}
-
-	return false
-}
-
-// AddCallback 添加端点变化回调
-func (w *ServiceWatcher) AddCallback(callback func([]resolver2.Endpoint)) {
-	w.callbacks = append(w.callbacks, callback)
-	// 立即调用一次回调
-	callback(w.endpoints)
-}
-
-// XDSEndpoint XDS端点实现
-type XDSEndpoint struct {
-	address  string
-	protocol string
-	metadata map[string]interface{}
-}
-
-// GetAddress 获取地址
-func (e *XDSEndpoint) GetAddress() string {
-	return e.address
-}
-
-// GetProtocol 获取协议
-func (e *XDSEndpoint) GetProtocol() string {
-	return e.protocol
-}
-
-// GetMetadata 获取元数据
-func (e *XDSEndpoint) GetMetadata() map[string]interface{} {
-	return e.metadata
-}
-
-// GetServiceEndpoints 获取服务端点（公共接口）
-func (r *Resolver) GetServiceEndpoints(serviceName string) []resolver2.Endpoint {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if watcher, exists := r.watchers[serviceName]; exists {
-		return watcher.endpoints
-	}
-
-	return nil
-}
-
-// RegisterEndpointCallback 注册端点变化回调
-func (r *Resolver) RegisterEndpointCallback(serviceName string, callback func([]resolver2.Endpoint)) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	watcher, exists := r.watchers[serviceName]
-	if !exists {
-		return fmt.Errorf("service not watched: %s", serviceName)
-	}
-
-	watcher.AddCallback(callback)
-	return nil
-}
-
-// WatchService 监听服务（用于外部调用）
-func (r *Resolver) WatchService(serviceName string, callback func([]resolver2.Endpoint)) error {
-	// 如果没有监听器，先创建
-	if err := r.AddWatch(serviceName); err != nil {
+	// Subscribe to EDS for this service
+	if err := watcher.subscribe(); err != nil {
 		return err
 	}
 
-	// 注册回调
-	return r.RegisterEndpointCallback(serviceName, callback)
+	r.watcher[serviceName] = watcher
+
+	logger.InfoField("xDS resolver watching service",
+		logger.String("service", serviceName))
+
+	return nil
 }
 
-// UnwatchService 取消监听服务
-func (r *Resolver) UnwatchService(serviceName string) error {
-	return r.DelWatch(serviceName)
-}
+// DelWatch stops watching a service
+func (r *resolver) DelWatch(serviceName string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-// GetAllWatchedServices 获取所有监听的服务
-func (r *Resolver) GetAllWatchedServices() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	services := make([]string, 0, len(r.watchers))
-	for serviceName := range r.watchers {
-		services = append(services, serviceName)
+	if r.closed {
+		return nil
 	}
 
-	return services
+	w, ok := r.watcher[serviceName]
+	if !ok {
+		return nil
+	}
+
+	w.stop()
+	delete(r.watcher, serviceName)
+
+	logger.InfoField("xDS resolver stopped watching service",
+		logger.String("service", serviceName))
+
+	return nil
 }
 
-// GetStats 获取解析器统计信息
-func (r *Resolver) GetStats() map[string]interface{} {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+// Close closes the resolver and stops all watchers
+func (r *resolver) Close() error {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil
+	}
+	r.closed = true
+	r.mu.Unlock()
 
-	stats := make(map[string]interface{})
-	stats["watched_services_count"] = len(r.watchers)
-	stats["closed"] = r.closed
+	for _, w := range r.watcher {
+		w.stop()
+	}
 
-	serviceStats := make(map[string]interface{})
-	for serviceName, watcher := range r.watchers {
-		serviceStats[serviceName] = map[string]interface{}{
-			"endpoints_count": len(watcher.endpoints),
-			"callbacks_count": len(watcher.callbacks),
+	logger.InfoField("xDS resolver closed")
+	return nil
+}
+
+// Name returns the resolver name
+func (r *resolver) Name() string {
+	return name
+}
+
+// watcherInstance watches a specific service for endpoint updates
+type watcherInstance struct {
+	serviceName string
+	resolver    *resolver
+	mu          sync.Mutex
+}
+
+// subscribe subscribes to EDS updates for the service
+func (w *watcherInstance) subscribe() error {
+	// Cluster name is typically the service name in Istio
+	clusterName := w.serviceName
+
+	// Subscribe to EDS
+	handler := func(resourceType string, resources []interface{}) error {
+		return w.handleEDSUpdate(resources)
+	}
+
+	return w.resolver.client.Subscribe(
+		resource.EndpointType,
+		[]string{clusterName},
+		handler,
+	)
+}
+
+// handleEDSUpdate processes EDS updates
+func (w *watcherInstance) handleEDSUpdate(resources []interface{}) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	var endpoints []interface{}
+
+	for _, res := range resources {
+		anyRes, ok := res.(*anypb.Any)
+		if !ok {
+			logger.WarnField("unexpected resource type in EDS update")
+			continue
+		}
+
+		// Unmarshal ClusterLoadAssignment
+		cla := &endpoint.ClusterLoadAssignment{}
+		if err := anyRes.UnmarshalTo(cla); err != nil {
+			logger.ErrorField("failed to unmarshal ClusterLoadAssignment", logger.Err(err))
+			continue
+		}
+
+		// Extract endpoints from localities
+		for _, localityEndpoints := range cla.Endpoints {
+			locality := localityEndpoints.Locality
+			priority := localityEndpoints.Priority
+			weight := localityEndpoints.LoadBalancingWeight.GetValue()
+
+			for _, lbEndpoint := range localityEndpoints.LbEndpoints {
+				ep := lbEndpoint.GetEndpoint()
+				if ep == nil {
+					continue
+				}
+
+				socketAddr := ep.Address.GetSocketAddress()
+				if socketAddr == nil {
+					continue
+				}
+
+				address := fmt.Sprintf("%s:%d", socketAddr.GetAddress(), socketAddr.GetPortValue())
+
+				// Determine health status
+				health := HealthUnknown
+				switch lbEndpoint.HealthStatus {
+				case corev3.HealthStatus_HEALTHY:
+					health = HealthHealthy
+				case corev3.HealthStatus_UNHEALTHY:
+					health = HealthUnhealthy
+				case corev3.HealthStatus_DRAINING:
+					health = HealthDraining
+				case corev3.HealthStatus_TIMEOUT:
+					health = HealthTimeout
+				case corev3.HealthStatus_DEGRADED:
+					health = HealthDegraded
+				}
+
+				// Build endpoint metadata
+				metadata := map[string]interface{}{
+					config2.KeySingleAddress:  address,
+					config2.KeySingleProtocol: "grpc", // Default to gRPC
+					"health":                  health.String(),
+					"priority":                priority,
+					"weight":                  weight,
+				}
+
+				// Add locality information
+				if locality != nil {
+					metadata["locality"] = &Locality{
+						Region:  locality.Region,
+						Zone:    locality.Zone,
+						SubZone: locality.SubZone,
+					}
+				}
+
+				endpoints = append(endpoints, metadata)
+			}
 		}
 	}
-	stats["services"] = serviceStats
 
-	return stats
+	// Update configuration with new endpoints
+	// endpoints is already in the correct format: []interface{} containing map[string]interface{}
+	configKey := fmt.Sprintf(config2.KeyClientEndpoints, w.serviceName)
+	if err := config2.Set(configKey, endpoints); err != nil {
+		logger.ErrorField("failed to update endpoints configuration",
+			logger.String("service", w.serviceName),
+			logger.Err(err))
+		return err
+	}
+
+	logger.DebugField("xDS resolver updated endpoints",
+		logger.String("service", w.serviceName),
+		logger.Int("count", len(endpoints)))
+
+	return nil
+}
+
+// stop stops watching the service
+func (w *watcherInstance) stop() {
+	// In a full implementation, we would unsubscribe from EDS here
+	// For now, the client will handle cleanup when closed
 }

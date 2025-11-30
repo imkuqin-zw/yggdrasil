@@ -1,0 +1,92 @@
+# xDS Service Governance Configuration
+
+yggdrasil:
+  # Application configuration
+  application:
+    name: "example-service"
+    version: "1.0.0"
+  
+  # xDS configuration
+  xds:
+    # xDS server connection
+    server:
+      # Istio Pilot address (gRPC endpoint)
+      address: "localhost:15010"
+      # Use TLS connection
+      useTLS: false
+      # TLS port (used when useTLS is true)
+      tlsPort: 15011
+    
+    # Node identification
+    node:
+      # Cluster name
+      cluster: "default-cluster"
+      # Node ID (unique identifier for this instance)
+      id: "example-service-instance-1"
+      # Locality information (optional)
+      locality:
+        region: "us-west"
+        zone: "us-west-1a"
+        subZone: "rack-1"
+      # Build version
+      buildVersion: "1.19.0"
+      # Custom metadata
+      metadata:
+        version: "1.0.0"
+        environment: "development"
+    
+    # TLS configuration (when useTLS is true)
+    tls:
+      enabled: false
+      # Path to CA certificate
+      caCert: "/etc/certs/ca.crt"
+      # Path to client certificate
+      clientCert: "/etc/certs/client.crt"
+      # Path to client private key
+      clientKey: "/etc/certs/client.key"
+      # Server name for SNI
+      serverName: "istiod.istio-system.svc"
+      # Skip certificate verification (insecure, for testing only)
+      insecureSkipVerify: false
+    
+    # Resources to subscribe to
+    resources:
+      # Listener Discovery Service
+      lds: true
+      # Route Discovery Service
+      rds: true
+      # Cluster Discovery Service
+      cds: true
+      # Endpoint Discovery Service
+      eds: true
+      # Specific cluster names to watch (empty means watch all)
+      clusterNames: []
+      # Specific listener names to watch (empty means watch all)
+      listenerNames: []
+      # Specific route names to watch (empty means watch all)
+      routeNames: []
+    
+    # Connection settings
+    timeout: 10s
+    retryInterval: 5s
+    maxRetries: 3
+    # Use Aggregated Discovery Service
+    useADS: true
+  
+  # Client configuration
+  client:
+    # Use xDS for service discovery
+    resolver: "xds"
+    # Use xDS for load balancing
+    balancer: "xds"
+    # Namespace for service discovery
+    namespace: "default"
+  
+  # Registry configuration
+  registry:
+    # Use xDS registry (note: typically handled by control plane)
+    name: "xds"
+    xds:
+      # Enable service registration (not supported by all control planes)
+      enableRegistration: false
+      serviceToken: ""

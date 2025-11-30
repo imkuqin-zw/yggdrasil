@@ -299,7 +299,6 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr net.Addr, opts Connect
 			updateFlowControl: t.updateFlowControl,
 		}
 	}
-
 	t.ctx = t.statsHandlers.TagChannel(t.ctx, &stats.ChanTagInfoBase{
 		RemoteEndpoint: t.RemoteAddr().String(),
 		LocalEndpoint:  t.LocalAddr().String(),
@@ -720,7 +719,9 @@ func (t *http2Client) Close(err error) {
 	}
 	// Call t.onClose before setting the state to closing to prevent the client
 	// from attempting to create new streams ASAP.
-	t.onClose()
+	if t.onClose != nil {
+		t.onClose()
+	}
 	t.state = closing
 	streams := t.activeStreams
 	t.activeStreams = nil

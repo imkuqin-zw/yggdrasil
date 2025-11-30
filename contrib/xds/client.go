@@ -19,468 +19,464 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"sync"
 	"time"
 
+	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	discovery "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/config"
-	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
-
-	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 )
 
-// Client XDS客户端接口
-type Client interface {
-	// Start 启动XDS客户端
-	Start(ctx context.Context) error
+// ResourceUpdateHandler is called when xDS resources are updated
+type ResourceUpdateHandler func(resourceType string, resources []interface{}) error
 
-	// Stop 停止XDS客户端
-	Stop() error
-
-	// GetResolver 获取Resolver
-	GetResolver() *Resolver
-
-	// GetBalancer 获取Balancer
-	GetBalancer(serviceName string) *Balancer
-
-	// GetNode 获取节点信息
-	GetNode() *Node
-
-	// IsReady 检查客户端是否就绪
-	IsReady() bool
-}
-
-// xdsClient XDS客户端实现
-type xdsClient struct {
-	config *Config
-	node   *Node
-	cache  SnapshotCache
+// Client manages the connection to the xDS control plane and handles resource subscriptions
+type Client struct {
+	config Config
 	conn   *grpc.ClientConn
+	node   *core.Node
 
-	// 简化的实现 - 直接管理资源而不依赖复杂的XDS客户端库
-	resourceManagers map[resource.Type]*ResourceManager
+	// ADS stream
+	adsClient discovery.AggregatedDiscoveryService_StreamAggregatedResourcesClient
 
-	// 状态管理
-	mu        sync.RWMutex
-	ready     bool
-	stopped   bool
-	resolver  *Resolver
-	balancers map[string]*Balancer
+	// Resource management
+	resourceManager *ResourceManager
+	ldsHandler      *LDSHandler
+	rdsHandler      *RDSHandler
 
-	// 回调函数
-	onConfigUpdate func(types.Resource)
+	// Resource handlers
+	handlers  map[string][]ResourceUpdateHandler
+	handlerMu sync.RWMutex
+
+	// Subscribed resources
+	subscriptions map[string]map[string]bool // resourceType -> resourceName -> subscribed
+	subMu         sync.RWMutex
+
+	// State
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+	closed bool
+	mu     sync.RWMutex
 }
 
-// ResourceManager 资源管理器
-type ResourceManager struct {
-	typ       resource.Type
-	resources map[string]types.Resource
-	version   string
-	callbacks []func(types.Resource)
-	mu        sync.RWMutex
-}
-
-// NewResourceManager 创建资源管理器
-func NewResourceManager(typ resource.Type) *ResourceManager {
-	return &ResourceManager{
-		typ:       typ,
-		resources: make(map[string]types.Resource),
-		callbacks: make([]func(types.Resource), 0),
+// NewClient creates a new xDS client
+func NewClient(config Config) (*Client, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
-}
 
-// UpdateResources 更新资源
-func (rm *ResourceManager) UpdateResources(version string, resources []types.Resource) {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	rm.version = version
-	rm.resources = make(map[string]types.Resource)
-	for _, resource := range resources {
-		name := getResourceName(resource)
-		rm.resources[name] = resource
+	// Initialize resource manager and handlers
+	resourceManager := NewResourceManager()
 
-		// 通知回调
-		for _, callback := range rm.callbacks {
-			callback(resource)
+	client := &Client{
+		config:          config,
+		resourceManager: resourceManager,
+		handlers:        make(map[string][]ResourceUpdateHandler),
+		subscriptions:   make(map[string]map[string]bool),
+		ctx:             ctx,
+		cancel:          cancel,
+	}
+
+	// Initialize handlers
+	client.ldsHandler = NewLDSHandler(resourceManager, client)
+	client.rdsHandler = NewRDSHandler(resourceManager)
+
+	// Build node information
+	client.node = buildNode(&config.Node)
+
+	// Connect to xDS server
+	if err := client.connect(); err != nil {
+		cancel()
+		return nil, err
+	}
+
+	// Start ADS stream if enabled
+	if config.UseADS {
+		if err := client.startADS(); err != nil {
+			client.Close()
+			return nil, err
 		}
 	}
-}
 
-// GetResources 获取资源
-func (rm *ResourceManager) GetResources() []types.Resource {
-	rm.mu.RLock()
-	defer rm.mu.RUnlock()
-
-	result := make([]types.Resource, 0, len(rm.resources))
-	for _, resource := range rm.resources {
-		result = append(result, resource)
-	}
-	return result
-}
-
-// AddCallback 添加回调
-func (rm *ResourceManager) AddCallback(callback func(types.Resource)) {
-	rm.mu.Lock()
-	defer rm.mu.Unlock()
-	rm.callbacks = append(rm.callbacks, callback)
-}
-
-// NewClient 创建XDS客户端
-func NewClient() (Client, error) {
-	// 加载配置
-	cfg := &Config{}
-	if err := config.Get("xds").Scan(cfg); err != nil {
-		logger.WarnField("failed to load xds config, using default", logger.Err(err))
-		cfg = defaultConfig
-	}
-
-	// 创建节点信息
-	node := &Node{
-		ID:       cfg.NodeInfo.Id,
-		Cluster:  cfg.NodeInfo.Cluster,
-		Metadata: cfg.NodeInfo.Metadata,
-	}
-
-	// 创建快照缓存
-	cache := NewSnapshotCache(true, node)
-
-	// 创建资源管理器
-	resourceManagers := map[resource.Type]*ResourceManager{
-		resource.ListenerType: NewResourceManager(resource.ListenerType),
-		resource.RouteType:    NewResourceManager(resource.RouteType),
-		resource.ClusterType:  NewResourceManager(resource.ClusterType),
-		resource.EndpointType: NewResourceManager(resource.EndpointType),
-	}
-
-	client := &xdsClient{
-		config:           cfg,
-		node:             node,
-		cache:            cache,
-		resourceManagers: resourceManagers,
-		balancers:        make(map[string]*Balancer),
-	}
-
-	// 初始化资源监听
-	client.initResourceWatchers()
+	logger.InfoField("xDS client connected",
+		logger.String("server", config.Server.Address),
+		logger.String("node", config.Node.Id))
 
 	return client, nil
 }
 
-// initResourceWatchers 初始化资源监听器
-func (c *xdsClient) initResourceWatchers() {
-	for typ, manager := range c.resourceManagers {
-		manager.AddCallback(func(resource types.Resource) {
-			logger.DebugField("resource updated",
-				logger.String("type", string(typ)),
-				logger.String("name", getResourceName(resource)))
+// connect establishes a gRPC connection to the xDS server
+func (c *Client) connect() error {
+	var opts []grpc.DialOption
 
-			// 更新缓存
-			c.updateSnapshot()
-
-			// 触发全局回调
-			c.onConfigUpdate(resource)
-		})
-	}
-}
-
-// Start 启动XDS客户端
-func (c *xdsClient) Start(ctx context.Context) error {
-	logger.InfoField("starting XDS client")
-
-	// 建立与管理服务器的连接
-	if err := c.connectManagementServers(); err != nil {
-		return fmt.Errorf("failed to connect to management servers: %w", err)
+	// Configure TLS if enabled
+	if c.config.TLS.Enabled {
+		tlsConfig, err := c.buildTLSConfig()
+		if err != nil {
+			return fmt.Errorf("failed to build TLS config: %w", err)
+		}
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	// 启动资源同步
-	if err := c.startResourceSync(ctx); err != nil {
-		return fmt.Errorf("failed to start resource sync: %w", err)
+	// Add timeout
+	opts = append(opts, grpc.WithBlock())
+
+	// Determine server address
+	serverAddr := c.config.Server.Address
+	if c.config.Server.UseTLS && c.config.TLS.Enabled {
+		// Use TLS port if specified
+		serverAddr = fmt.Sprintf("%s:%d", c.config.Server.Address, c.config.Server.TLSPort)
 	}
 
-	// 等待初始配置加载
-	if err := c.waitForInitialResources(ctx); err != nil {
-		return fmt.Errorf("failed to wait for initial resources: %w", err)
+	// Connect with timeout
+	ctx, cancel := context.WithTimeout(c.ctx, c.config.Timeout)
+	defer cancel()
+
+	conn, err := grpc.DialContext(ctx, serverAddr, opts...)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
-	c.mu.Lock()
-	c.ready = true
-	c.mu.Unlock()
-
-	// 创建Resolver
-	c.resolver = NewResolver(c)
-
-	logger.InfoField("XDS client started successfully")
+	c.conn = conn
 	return nil
 }
 
-// connectManagementServers 连接管理服务器
-func (c *xdsClient) connectManagementServers() error {
-	// 创建TLS凭证
+// buildTLSConfig creates a TLS configuration from the config
+func (c *Client) buildTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
-		ServerName:         c.config.Security.ServerName,
-		InsecureSkipVerify: c.config.Security.InsecureSkipVerify,
+		InsecureSkipVerify: c.config.TLS.InsecureSkipVerify,
 	}
 
-	if c.config.Security.TlsEnabled && c.config.Security.CaCertFile != "" {
-		caCert, err := ioutil.ReadFile(c.config.Security.CaCertFile)
+	// Load CA certificate
+	if c.config.TLS.CACert != "" {
+		caCert, err := os.ReadFile(c.config.TLS.CACert)
 		if err != nil {
-			return fmt.Errorf("failed to read CA cert file: %w", err)
+			return nil, fmt.Errorf("failed to read CA cert: %w", err)
 		}
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA cert")
+		}
 		tlsConfig.RootCAs = caCertPool
-
-		if c.config.Security.CertFile != "" && c.config.Security.KeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(c.config.Security.CertFile, c.config.Security.KeyFile)
-			if err != nil {
-				return fmt.Errorf("failed to load client cert: %w", err)
-			}
-			tlsConfig.Certificates = []tls.Certificate{cert}
-		}
 	}
 
-	// 创建gRPC连接凭证
-	var creds credentials.TransportCredentials
-	if c.config.Security.TlsEnabled {
-		creds = credentials.NewTLS(tlsConfig)
-	} else {
-		creds = insecure.NewCredentials()
-	}
-
-	// 创建gRPC连接选项
-	dialOpts := []grpc.DialOption{
-		grpc.WithTransportCredentials(creds),
-		grpc.WithBlock(),
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 尝试连接第一个可用的管理服务器
-	for _, addr := range c.config.ManagementServerAddresses {
-		conn, err := grpc.DialContext(ctx, addr, dialOpts...)
+	// Load client certificate if provided
+	if c.config.TLS.ClientCert != "" && c.config.TLS.ClientKey != "" {
+		cert, err := tls.LoadX509KeyPair(c.config.TLS.ClientCert, c.config.TLS.ClientKey)
 		if err != nil {
-			logger.WarnField("failed to connect to management server",
-				logger.String("address", addr), logger.Err(err))
-			continue
+			return nil, fmt.Errorf("failed to load client cert: %w", err)
 		}
-
-		c.conn = conn
-		logger.InfoField("connected to management server", logger.String("address", addr))
-		return nil
+		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	return fmt.Errorf("failed to connect to any management server")
+	// Set server name for SNI
+	if c.config.TLS.ServerName != "" {
+		tlsConfig.ServerName = c.config.TLS.ServerName
+	}
+
+	return tlsConfig, nil
 }
 
-// startResourceSync 启动资源同步
-func (c *xdsClient) startResourceSync(ctx context.Context) error {
-	// 简化实现：定期从外部配置源同步资源
-	// 实际生产环境应该实现完整的XDS协议
+// buildNode creates an xDS node from configuration
+func buildNode(nodeInfo *NodeInfo) *core.Node {
+	node := &core.Node{
+		Id:      nodeInfo.Id,
+		Cluster: nodeInfo.Cluster,
+	}
 
-	ticker := time.NewTicker(10 * time.Second) // 每10秒同步一次
-	defer ticker.Stop()
-
-	// 启动同步goroutine
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				c.syncResources()
-			}
+	// Add locality if configured
+	if nodeInfo.Locality != nil {
+		node.Locality = &core.Locality{
+			Region:  nodeInfo.Locality.Region,
+			Zone:    nodeInfo.Locality.Zone,
+			SubZone: nodeInfo.Locality.SubZone,
 		}
-	}()
+	}
+
+	// Add metadata
+	if len(nodeInfo.Metadata) > 0 {
+		// Convert metadata to protobuf Struct
+		// For simplicity, we'll add it as user agent name
+		if buildVersion, ok := nodeInfo.Metadata["buildVersion"].(string); ok {
+			node.UserAgentName = buildVersion
+		}
+	}
+
+	return node
+}
+
+// startADS starts the Aggregated Discovery Service stream
+func (c *Client) startADS() error {
+	adsClient := discovery.NewAggregatedDiscoveryServiceClient(c.conn)
+
+	stream, err := adsClient.StreamAggregatedResources(c.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create ADS stream: %w", err)
+	}
+
+	c.adsClient = stream
+
+	// Start goroutine to receive responses
+	c.wg.Add(1)
+	go c.receiveADSResponses()
 
 	return nil
 }
 
-// syncResources 同步资源
-func (c *xdsClient) syncResources() {
-	// 这里应该实现真正的XDS协议通信
-	// 为了简化，我们创建一些模拟资源
-
-	logger.DebugField("syncing XDS resources")
-
-	// 模拟监听器资源
-	if manager, exists := c.resourceManagers[resource.ListenerType]; exists {
-		// 这里可以从XDS服务器获取真实的监听器配置
-		// 暂时使用空资源
-		manager.UpdateResources(fmt.Sprintf("v%d", time.Now().Unix()), []types.Resource{})
-	}
-
-	// 模拟路由资源
-	if manager, exists := c.resourceManagers[resource.RouteType]; exists {
-		manager.UpdateResources(fmt.Sprintf("v%d", time.Now().Unix()), []types.Resource{})
-	}
-
-	// 模拟集群资源
-	if manager, exists := c.resourceManagers[resource.ClusterType]; exists {
-		// 创建模拟集群配置
-		mockClusters := c.createMockClusters()
-		manager.UpdateResources(fmt.Sprintf("v%d", time.Now().Unix()), mockClusters)
-	}
-
-	// 模拟端点资源
-	if manager, exists := c.resourceManagers[resource.EndpointType]; exists {
-		// 创建模拟端点配置
-		mockEndpoints := c.createMockEndpoints()
-		manager.UpdateResources(fmt.Sprintf("v%d", time.Now().Unix()), mockEndpoints)
-	}
-}
-
-// createMockClusters 创建模拟集群
-func (c *xdsClient) createMockClusters() []types.Resource {
-	// 这里应该返回真实的集群资源
-	// 暂时返回空切片
-	return []types.Resource{}
-}
-
-// createMockEndpoints 创建模拟端点
-func (c *xdsClient) createMockEndpoints() []types.Resource {
-	// 这里应该返回真实的端点资源
-	// 暂时返回空切片
-	return []types.Resource{}
-}
-
-// updateSnapshot 更新快照
-func (c *xdsClient) updateSnapshot() {
-	// 收集所有资源
-	var listeners, routes, clusters, endpoints []types.Resource
-
-	if manager, exists := c.resourceManagers[resource.ListenerType]; exists {
-		listeners = manager.GetResources()
-	}
-	if manager, exists := c.resourceManagers[resource.RouteType]; exists {
-		routes = manager.GetResources()
-	}
-	if manager, exists := c.resourceManagers[resource.ClusterType]; exists {
-		clusters = manager.GetResources()
-	}
-	if manager, exists := c.resourceManagers[resource.EndpointType]; exists {
-		endpoints = manager.GetResources()
-	}
-
-	// 创建快照
-	version := fmt.Sprintf("v%d", time.Now().Unix())
-	snapshot, err := CreateSnapshot(version, listeners, routes, clusters, endpoints)
-	if err != nil {
-		logger.WarnField("failed to create snapshot", logger.Err(err))
-		return
-	}
-
-	// 更新缓存
-	if err := c.cache.SetSnapshot(context.Background(), c.node.ID, *snapshot); err != nil {
-		logger.WarnField("failed to update cache", logger.Err(err))
-	}
-}
-
-// waitForInitialResources 等待初始资源加载
-func (c *xdsClient) waitForInitialResources(ctx context.Context) error {
-	timeout := c.config.InitialLoadTimeout
-	if timeout == 0 {
-		timeout = 15 * time.Second
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+// receiveADSResponses receives and processes ADS responses
+func (c *Client) receiveADSResponses() {
+	defer c.wg.Done()
 
 	for {
 		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for initial resources")
+		case <-c.ctx.Done():
+			return
+		default:
+		}
+
+		resp, err := c.adsClient.Recv()
+		if err != nil {
+			c.mu.RLock()
+			closed := c.closed
+			c.mu.RUnlock()
+
+			if !closed {
+				logger.ErrorField("failed to receive ADS response", logger.Err(err))
+				// Attempt to reconnect
+				c.handleDisconnect()
+			}
+			return
+		}
+
+		if err := c.handleADSResponse(resp); err != nil {
+			logger.ErrorField("failed to handle ADS response",
+				logger.String("typeUrl", resp.TypeUrl),
+				logger.Err(err))
+		}
+	}
+}
+
+// handleADSResponse processes an ADS response
+func (c *Client) handleADSResponse(resp *discovery.DiscoveryResponse) error {
+	resourceType := resp.TypeUrl
+
+	logger.DebugField("received xDS response",
+		logger.String("type", resourceType),
+		logger.Int("resources", len(resp.Resources)),
+		logger.String("version", resp.VersionInfo))
+
+	// Convert resources to interface slice
+	var resources []interface{}
+	for _, res := range resp.Resources {
+		resources = append(resources, res)
+	}
+
+	// Use built-in handlers for LDS and RDS
+	switch resourceType {
+	case resource.ListenerType:
+		if err := c.ldsHandler.HandleUpdate(resources); err != nil {
+			logger.ErrorField("LDS handler failed", logger.Err(err))
+		}
+	case resource.RouteType:
+		if err := c.rdsHandler.HandleUpdate(resources); err != nil {
+			logger.ErrorField("RDS handler failed", logger.Err(err))
+		}
+	}
+
+	// Call registered custom handlers
+	c.handlerMu.RLock()
+	handlers := c.handlers[resourceType]
+	c.handlerMu.RUnlock()
+
+	for _, handler := range handlers {
+		if err := handler(resourceType, resources); err != nil {
+			logger.ErrorField("handler failed",
+				logger.String("type", resourceType),
+				logger.Err(err))
+		}
+	}
+
+	// Send ACK
+	return c.sendACK(resourceType, resp.VersionInfo, resp.Nonce)
+}
+
+// sendACK sends an ACK for a received response
+func (c *Client) sendACK(typeUrl, version, nonce string) error {
+	c.subMu.RLock()
+	resourceNames := make([]string, 0)
+	if names, ok := c.subscriptions[typeUrl]; ok {
+		for name := range names {
+			resourceNames = append(resourceNames, name)
+		}
+	}
+	c.subMu.RUnlock()
+
+	req := &discovery.DiscoveryRequest{
+		TypeUrl:       typeUrl,
+		VersionInfo:   version,
+		Node:          c.node,
+		ResourceNames: resourceNames,
+		ResponseNonce: nonce,
+	}
+
+	return c.adsClient.Send(req)
+}
+
+// Subscribe subscribes to a specific resource type and names
+func (c *Client) Subscribe(resourceType string, resourceNames []string, handler ResourceUpdateHandler) error {
+	c.mu.RLock()
+	if c.closed {
+		c.mu.RUnlock()
+		return ErrClientClosed
+	}
+	c.mu.RUnlock()
+
+	// Register handler
+	c.handlerMu.Lock()
+	c.handlers[resourceType] = append(c.handlers[resourceType], handler)
+	c.handlerMu.Unlock()
+
+	// Track subscriptions
+	c.subMu.Lock()
+	if c.subscriptions[resourceType] == nil {
+		c.subscriptions[resourceType] = make(map[string]bool)
+	}
+	for _, name := range resourceNames {
+		c.subscriptions[resourceType][name] = true
+	}
+	c.subMu.Unlock()
+
+	// Send subscription request
+	req := &discovery.DiscoveryRequest{
+		TypeUrl:       resourceType,
+		Node:          c.node,
+		ResourceNames: resourceNames,
+	}
+
+	if c.adsClient != nil {
+		if err := c.adsClient.Send(req); err != nil {
+			return ErrSubscriptionFailed(resourceType, fmt.Sprintf("%v", resourceNames), err)
+		}
+	}
+
+	logger.InfoField("subscribed to xDS resource",
+		logger.String("type", resourceType),
+		logger.Any("names", resourceNames))
+
+	return nil
+}
+
+// handleDisconnect handles disconnection and attempts to reconnect
+func (c *Client) handleDisconnect() {
+	logger.WarnField("xDS connection lost, attempting to reconnect")
+
+	ticker := time.NewTicker(c.config.RetryInterval)
+	defer ticker.Stop()
+
+	retries := 0
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
 		case <-ticker.C:
-			if c.cache.HasInitialResources() {
-				return nil
+			if err := c.reconnect(); err != nil {
+				retries++
+				logger.ErrorField("reconnection failed",
+					logger.Int("retries", retries),
+					logger.Err(err))
+
+				if c.config.MaxRetries > 0 && retries >= c.config.MaxRetries {
+					logger.ErrorField("max retries reached, giving up")
+					return
+				}
+			} else {
+				logger.InfoField("reconnected to xDS server")
+				return
 			}
 		}
 	}
 }
 
-// Stop 停止XDS客户端
-func (c *xdsClient) Stop() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.stopped {
-		return nil
-	}
-
-	logger.InfoField("stopping XDS client")
-
-	c.stopped = true
-	c.ready = false
-
-	// 关闭gRPC连接
+// reconnect attempts to reconnect to the xDS server
+func (c *Client) reconnect() error {
+	// Close old connection
 	if c.conn != nil {
-		if err := c.conn.Close(); err != nil {
-			logger.WarnField("failed to close gRPC connection", logger.Err(err))
-		}
+		c.conn.Close()
 	}
 
-	logger.InfoField("XDS client stopped")
+	// Reconnect
+	if err := c.connect(); err != nil {
+		return err
+	}
+
+	// Restart ADS
+	if c.config.UseADS {
+		if err := c.startADS(); err != nil {
+			return err
+		}
+
+		// Resubscribe to all resources
+		c.subMu.RLock()
+		for resourceType, names := range c.subscriptions {
+			resourceNames := make([]string, 0, len(names))
+			for name := range names {
+				resourceNames = append(resourceNames, name)
+			}
+			c.subMu.RUnlock()
+
+			req := &discovery.DiscoveryRequest{
+				TypeUrl:       resourceType,
+				Node:          c.node,
+				ResourceNames: resourceNames,
+			}
+
+			if err := c.adsClient.Send(req); err != nil {
+				return err
+			}
+
+			c.subMu.RLock()
+		}
+		c.subMu.RUnlock()
+	}
+
 	return nil
 }
 
-// GetResolver 获取Resolver
-func (c *xdsClient) GetResolver() *Resolver {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.resolver
-}
-
-// GetBalancer 获取Balancer
-func (c *xdsClient) GetBalancer(serviceName string) *Balancer {
+// Close closes the xDS client and cleans up resources
+func (c *Client) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.mu.Unlock()
 
-	if balancer, exists := c.balancers[serviceName]; exists {
-		return balancer
+	logger.InfoField("closing xDS client")
+
+	// Cancel context
+	c.cancel()
+
+	// Wait for goroutines
+	c.wg.Wait()
+
+	// Close connection
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil {
+			return err
+		}
 	}
 
-	balancer := NewBalancer(c, serviceName)
-	c.balancers[serviceName] = balancer
-	return balancer
-}
-
-// GetNode 获取节点信息
-func (c *xdsClient) GetNode() *Node {
-	return c.node
-}
-
-// IsReady 检查客户端是否就绪
-func (c *xdsClient) IsReady() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.ready
-}
-
-// OnConfigUpdate 配置更新回调
-func (c *xdsClient) OnConfigUpdate(resource types.Resource) {
-	if c.onConfigUpdate != nil {
-		c.onConfigUpdate(resource)
-	}
-}
-
-// SetConfigUpdateCallback 设置配置更新回调
-func (c *xdsClient) SetConfigUpdateCallback(callback func(types.Resource)) {
-	c.onConfigUpdate = callback
-}
-
-// GetResourceManager 获取资源管理器
-func (c *xdsClient) GetResourceManager(typ resource.Type) *ResourceManager {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.resourceManagers[typ]
+	return nil
 }

@@ -15,86 +15,123 @@
 package xds
 
 import (
-	"context"
-	"fmt"
+	"sync"
 
-	"github.com/imkuqin-zw/yggdrasil/pkg/balancer"
-	"github.com/imkuqin-zw/yggdrasil/pkg/defers"
+	config2 "github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
-	"github.com/imkuqin-zw/yggdrasil/pkg/resolver"
+)
+
+// Package xds provides service governance integration with xDS (Envoy's data plane API) protocol.
+// It implements service discovery, load balancing, and traffic management through xDS control plane
+// such as Istio Pilot, Envoy Control Plane, or other xDS-compatible servers.
+//
+// The package provides implementations of:
+//   - Resolver: Service discovery via EDS (Endpoint Discovery Service)
+//   - Balancer: Load balancing with CDS (Cluster Discovery Service)
+//   - Registry: Service registration (if supported by control plane)
+//
+// Supported xDS APIs:
+//   - LDS (Listener Discovery Service)
+var (
+	name = "xds"
+
+	configKeyBase      = name
+	configKeyNode      = config2.Join(configKeyBase, "node")
+	configKeyServer    = config2.Join(configKeyBase, "server")
+	configKeyTLS       = config2.Join(configKeyBase, "tls")
+	configKeyResources = config2.Join(configKeyBase, "resources")
 )
 
 var (
-	// 全局XDS客户端实例
-	globalClient Client
+	// Global xDS client instance
+	globalClient *Client
+	clientMu     sync.RWMutex
+	clientOnce   sync.Once
 )
 
-// init 初始化XDS组件
-func init() {
-	// 注册Resolver构建器
-	resolver.RegisterBuilder(name, newResolver)
-
-	// 注册Balancer构建器
-	balancer.RegisterBuilder(name, newBalancer)
-
-	// 注册优雅关闭
-	defers.Register(func() error {
-		if globalClient != nil {
-			return globalClient.Stop()
-		}
-		return nil
-	})
-}
-
-// newResolver 创建Resolver构建器
-func newResolver(_ string) (resolver.Resolver, error) {
-	if globalClient == nil {
-		return nil, fmt.Errorf("XDS client not initialized")
+// GetClient returns the global xDS client instance, creating it if necessary.
+// The client is lazily initialized on first access.
+func GetClient() (*Client, error) {
+	clientMu.RLock()
+	if globalClient != nil {
+		clientMu.RUnlock()
+		return globalClient, nil
 	}
-	return globalClient.GetResolver(), nil
-}
+	clientMu.RUnlock()
 
-// newBalancer 创建Balancer构建器
-func newBalancer(serviceName string) balancer.Balancer {
-	if globalClient == nil {
-		logger.WarnField("XDS client not initialized, using default balancer")
-		return &balancer.RoundRobin{}
+	clientMu.Lock()
+	defer clientMu.Unlock()
+
+	// Double-check after acquiring write lock
+	if globalClient != nil {
+		return globalClient, nil
 	}
-	return globalClient.GetBalancer(serviceName)
-}
 
-// Initialize 初始化XDS客户端
-func Initialize(ctx context.Context) error {
-	logger.InfoField("initializing XDS client")
+	// Load configuration
+	cfg := DefaultConfig()
+	if err := config2.Scan(configKeyBase, &cfg); err != nil {
+		logger.WarnField("failed to load xDS config, using defaults", logger.Err(err))
+	}
 
-	client, err := NewClient()
+	// Create client
+	client, err := NewClient(cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create XDS client: %w", err)
-	}
-
-	if err := client.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start XDS client: %w", err)
+		return nil, err
 	}
 
 	globalClient = client
-	logger.InfoField("XDS client initialized successfully")
-	return nil
+	return globalClient, nil
 }
 
-// GetClient 获取全局XDS客户端
-func GetClient() Client {
-	return globalClient
+// SetClient sets the global xDS client instance.
+// This is useful for testing or when you want to provide a custom client.
+func SetClient(client *Client) {
+	clientMu.Lock()
+	defer clientMu.Unlock()
+	globalClient = client
 }
 
-// IsInitialized 检查是否已初始化
-func IsInitialized() bool {
-	return globalClient != nil && globalClient.IsReady()
-}
+// CloseClient closes the global xDS client if it exists.
+func CloseClient() error {
+	clientMu.Lock()
+	defer clientMu.Unlock()
 
-// Shutdown 关闭XDS客户端
-func Shutdown() error {
 	if globalClient != nil {
-		return globalClient.Stop()
+		err := globalClient.Close()
+		globalClient = nil
+		return err
 	}
 	return nil
+}
+
+// namespace returns the xDS namespace, defaulting to "default" if not configured
+func namespace(ns string) string {
+	if ns == "" {
+		return "default"
+	}
+	return ns
+}
+
+// buildNodeInfo creates node information from configuration
+func buildNodeInfo() *NodeInfo {
+	node := &NodeInfo{}
+	if err := config2.Scan(configKeyNode, node); err != nil {
+		logger.WarnField("failed to load xDS node config", logger.Err(err))
+	}
+
+	// Set defaults if not configured
+	if node.Cluster == "" {
+		node.Cluster = config2.Get("yggdrasil.cluster").String("default-cluster")
+	}
+	if node.Id == "" {
+		node.Id = config2.Get("yggdrasil.instance.id").String("")
+	}
+
+	return node
+}
+
+// init registers the xDS implementations with the framework
+func init() {
+	// Implementations will register themselves in their respective files
+	logger.InfoField("xDS service governance module loaded")
 }

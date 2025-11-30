@@ -1,4 +1,4 @@
-go 1.24
+go 1.24.5
 
 use (
 	.
@@ -6,6 +6,6 @@ use (
 	./contrib/otelexporters
 	./contrib/polaris
 	./contrib/redis
-	./example
 	./contrib/xds
+	./example
 )

@@ -34,11 +34,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/grpctest"
 	"github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/leakcheck"
 	testutils2 "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc/transport/testutils"
-
-	"github.com/imkuqin-zw/yggdrasil/pkg/remote/credentials"
+	"github.com/imkuqin-zw/yggdrasil/pkg/stats"
 	"github.com/imkuqin-zw/yggdrasil/pkg/status"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/hpack"
@@ -1452,6 +1452,7 @@ func testFlowControlAccountCheck(t *testing.T, msgSize int, wc windowSizeConfig)
 	co := ConnectOptions{
 		InitialWindowSize:     wc.clientStream,
 		InitialConnWindowSize: wc.clientConn,
+		StatsHandler:          stats.GetServerHandler(),
 	}
 	server, client, cancel := setUpWithOptions(t, 0, sc, pingpong, co)
 	defer cancel()

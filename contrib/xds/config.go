@@ -18,135 +18,158 @@ import (
 	"time"
 )
 
-const (
-	name = "xds"
-)
-
-// Config XDS配置
+// Config contains all xDS client configuration
 type Config struct {
-	// ManagementServerAddresses 控制平面地址列表
-	ManagementServerAddresses []string `yaml:"management_server_addresses" json:"management_server_addresses"`
+	// Server configuration
+	Server ServerConfig `yaml:"server" json:"server"`
 
-	// NodeInfo 节点信息
-	NodeInfo NodeConfig `yaml:"node" json:"node"`
+	// Node identification
+	Node NodeInfo `yaml:"node" json:"node"`
 
-	// XdsResources 配置资源类型
-	XdsResources ResourceConfig `yaml:"xds_resources" json:"xds_resources"`
+	// TLS configuration
+	TLS TLSConfig `yaml:"tls" json:"tls"`
 
-	// Security 安全配置
-	Security SecurityConfig `yaml:"security" json:"security"`
+	// Resources to subscribe to
+	Resources ResourcesConfig `yaml:"resources" json:"resources"`
 
-	// Backoff 重试配置
-	Backoff BackoffConfig `yaml:"backoff" json:"backoff"`
+	// Connection settings
+	Timeout       time.Duration `yaml:"timeout" json:"timeout" default:"10s"`
+	RetryInterval time.Duration `yaml:"retryInterval" json:"retryInterval" default:"5s"`
+	MaxRetries    int           `yaml:"maxRetries" json:"maxRetries" default:"3"`
 
-	// InitialLoadTimeout 初始加载超时时间
-	InitialLoadTimeout time.Duration `yaml:"initial_load_timeout" json:"initial_load_timeout"`
+	// ADS (Aggregated Discovery Service) settings
+	UseADS bool `yaml:"useADS" json:"useADS" default:"true"`
 }
 
-// NodeConfig 节点配置
-type NodeConfig struct {
-	// Id 节点唯一标识
+// ServerConfig contains xDS server connection settings
+type ServerConfig struct {
+	// Address of the xDS server (e.g., "localhost:15010")
+	Address string `yaml:"address" json:"address" default:"localhost:15010"`
+
+	// UseTLS indicates whether to use TLS connection
+	UseTLS bool `yaml:"useTLS" json:"useTLS" default:"false"`
+
+	// TLS port (used when UseTLS is true)
+	TLSPort int `yaml:"tlsPort" json:"tlsPort" default:"15011"`
+}
+
+// NodeInfo contains node identification information sent to xDS server
+type NodeInfo struct {
+	// Cluster name
+	Cluster string `yaml:"cluster" json:"cluster" default:"default-cluster"`
+
+	// Node ID (unique identifier for this instance)
 	Id string `yaml:"id" json:"id"`
 
-	// Cluster 集群名称
-	Cluster string `yaml:"cluster" json:"cluster"`
+	// Locality information
+	Locality *Locality `yaml:"locality" json:"locality"`
 
-	// Metadata 节点元数据
-	Metadata map[string]string `yaml:"metadata" json:"metadata"`
+	// Metadata attached to the node
+	Metadata map[string]interface{} `yaml:"metadata" json:"metadata"`
+
+	// Build version
+	BuildVersion string `yaml:"buildVersion" json:"buildVersion" default:"1.19.0"`
 }
 
-// ResourceConfig 资源配置
-type ResourceConfig struct {
-	// ListenerNames 监听器名称列表
-	ListenerNames []string `yaml:"listener_names" json:"listener_names"`
-
-	// RouteConfigNames 路由配置名称列表
-	RouteConfigNames []string `yaml:"route_config_names" json:"route_config_names"`
-
-	// ClusterNames 集群名称列表
-	ClusterNames []string `yaml:"cluster_names" json:"cluster_names"`
-
-	// Ads 是否启用ADS聚合发现服务
-	Ads bool `yaml:"ads" json:"ads"`
+// Locality represents the location of the node
+type Locality struct {
+	Region  string `yaml:"region" json:"region"`
+	Zone    string `yaml:"zone" json:"zone"`
+	SubZone string `yaml:"subZone" json:"subZone"`
 }
 
-// SecurityConfig 安全配置
-type SecurityConfig struct {
-	// TlsEnabled 是否启用TLS
-	TlsEnabled bool `yaml:"tls_enabled" json:"tls_enabled"`
+// TLSConfig contains TLS/SSL configuration
+type TLSConfig struct {
+	// Enable TLS
+	Enabled bool `yaml:"enabled" json:"enabled" default:"false"`
 
-	// CaCertFile CA证书文件路径
-	CaCertFile string `yaml:"ca_cert_file" json:"ca_cert_file"`
+	// Path to CA certificate file
+	CACert string `yaml:"caCert" json:"caCert"`
 
-	// CertFile 客户端证书文件路径
-	CertFile string `yaml:"cert_file" json:"cert_file"`
+	// Path to client certificate file
+	ClientCert string `yaml:"clientCert" json:"clientCert"`
 
-	// KeyFile 客户端私钥文件路径
-	KeyFile string `yaml:"key_file" json:"key_file"`
+	// Path to client private key file
+	ClientKey string `yaml:"clientKey" json:"clientKey"`
 
-	// ServerName TLS服务器名称
-	ServerName string `yaml:"server_name" json:"server_name"`
+	// Server name for SNI
+	ServerName string `yaml:"serverName" json:"serverName"`
 
-	// InsecureSkipVerify 是否跳过TLS验证
-	InsecureSkipVerify bool `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
+	// Skip certificate verification (insecure, for testing only)
+	InsecureSkipVerify bool `yaml:"insecureSkipVerify" json:"insecureSkipVerify" default:"false"`
 }
 
-// BackoffConfig 重试配置
-type BackoffConfig struct {
-	// BaseInterval 基础退避间隔
-	BaseInterval time.Duration `yaml:"base_interval" json:"base_interval"`
+// ResourcesConfig specifies which xDS resources to subscribe to
+type ResourcesConfig struct {
+	// Subscribe to LDS (Listener Discovery Service)
+	LDS bool `yaml:"lds" json:"lds" default:"true"`
 
-	// MaxInterval 最大退避间隔
-	MaxInterval time.Duration `yaml:"max_interval" json:"max_interval"`
+	// Subscribe to RDS (Route Discovery Service)
+	RDS bool `yaml:"rds" json:"rds" default:"true"`
 
-	// MaxRetries 最大重试次数
-	MaxRetries int `yaml:"max_retries" json:"max_retries"`
+	// Subscribe to CDS (Cluster Discovery Service)
+	CDS bool `yaml:"cds" json:"cds" default:"true"`
+
+	// Subscribe to EDS (Endpoint Discovery Service)
+	EDS bool `yaml:"eds" json:"eds" default:"true"`
+
+	// Specific resource names to watch (empty means watch all)
+	ClusterNames  []string `yaml:"clusterNames" json:"clusterNames"`
+	ListenerNames []string `yaml:"listenerNames" json:"listenerNames"`
+	RouteNames    []string `yaml:"routeNames" json:"routeNames"`
 }
 
-var (
-	defaultConfig = &Config{
-		ManagementServerAddresses: []string{"xds-server:15010"},
-		NodeInfo: NodeConfig{
-			Id:      "yggdrasil-client",
-			Cluster: "yggdrasil-cluster",
+// DefaultConfig returns a default xDS configuration suitable for Istio Pilot
+func DefaultConfig() Config {
+	return Config{
+		Server: ServerConfig{
+			Address: "localhost:15010",
+			UseTLS:  false,
+			TLSPort: 15011,
 		},
-		XdsResources: ResourceConfig{
-			ListenerNames:    []string{"*"},
-			RouteConfigNames: []string{"*"},
-			ClusterNames:     []string{"*"},
-			Ads:              true,
+		Node: NodeInfo{
+			Cluster:      "default-cluster",
+			BuildVersion: "1.19.0",
+			Metadata:     make(map[string]interface{}),
 		},
-		Security: SecurityConfig{
-			TlsEnabled:         true,
+		TLS: TLSConfig{
+			Enabled:            false,
 			InsecureSkipVerify: false,
 		},
-		Backoff: BackoffConfig{
-			BaseInterval: 500 * time.Millisecond,
-			MaxInterval:  30 * time.Second,
-			MaxRetries:   10,
+		Resources: ResourcesConfig{
+			LDS: true,
+			RDS: true,
+			CDS: true,
+			EDS: true,
 		},
-		InitialLoadTimeout: 15 * time.Second,
+		Timeout:       10 * time.Second,
+		RetryInterval: 5 * time.Second,
+		MaxRetries:    3,
+		UseADS:        true,
 	}
-)
+}
 
-// SetDefaults 设置默认配置值
-func (c *Config) SetDefaults() {
-	if c.ManagementServerAddresses == nil {
-		c.ManagementServerAddresses = []string{"localhost:15000"}
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if c.Server.Address == "" {
+		return ErrInvalidConfig("server address is required")
 	}
-	if c.NodeInfo.Id == "" {
-		c.NodeInfo.Id = "default-node"
+	if c.Node.Cluster == "" {
+		return ErrInvalidConfig("node cluster is required")
 	}
-	if c.NodeInfo.Cluster == "" {
-		c.NodeInfo.Cluster = "default-cluster"
+	if c.TLS.Enabled {
+		if c.TLS.CACert == "" {
+			return ErrInvalidConfig("CA certificate is required when TLS is enabled")
+		}
 	}
-	if c.InitialLoadTimeout == 0 {
-		c.InitialLoadTimeout = 15 * time.Second
+	return nil
+}
+
+// GetServerAddress returns the appropriate server address based on TLS settings
+func (c *Config) GetServerAddress() string {
+	if c.Server.UseTLS && c.TLS.Enabled {
+		// Parse host from address and use TLS port
+		return c.Server.Address // Will be handled in client connection logic
 	}
-	if c.Backoff.BaseInterval == 0 {
-		c.Backoff.BaseInterval = 500 * time.Millisecond
-	}
-	if c.Backoff.MaxInterval == 0 {
-		c.Backoff.MaxInterval = 30 * time.Second
-	}
+	return c.Server.Address
 }

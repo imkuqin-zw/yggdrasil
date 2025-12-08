@@ -1,0 +1,76 @@
+# Docker Compose for xDS Example with Istio Pilot
+
+version: '3.8'
+
+services:
+  # Istio Pilot (xDS control plane)
+  istio-pilot:
+    image: istio/pilot:1.19.0
+    container_name: istio-pilot
+    ports:
+      - "15010:15010"  # gRPC xDS endpoint
+      - "15011:15011"  # gRPC xDS with TLS
+      - "8080:8080"    # Debug/health endpoint
+    environment:
+      - PILOT_ENABLE_XDS_CACHE=true
+      - PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING=true
+    networks:
+      - xds-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Example service instance 1
+  example-service-1:
+    build:
+      context: ../../..
+      dockerfile: example/xds/Dockerfile.server
+    container_name: example-service-1
+    depends_on:
+      - istio-pilot
+    environment:
+      - XDS_SERVER=istio-pilot:15010
+      - INSTANCE_ID=example-service-instance-1
+      - SERVICE_PORT=8080
+    ports:
+      - "8080:8080"
+    networks:
+      - xds-network
+
+  # Example service instance 2
+  example-service-2:
+    build:
+      context: ../../..
+      dockerfile: example/xds/Dockerfile.server
+    container_name: example-service-2
+    depends_on:
+      - istio-pilot
+    environment:
+      - XDS_SERVER=istio-pilot:15010
+      - INSTANCE_ID=example-service-instance-2
+      - SERVICE_PORT=8081
+    ports:
+      - "8081:8081"
+    networks:
+      - xds-network
+
+  # Example client
+  example-client:
+    build:
+      context: ../../..
+      dockerfile: example/xds/Dockerfile.client
+    container_name: example-client
+    depends_on:
+      - istio-pilot
+      - example-service-1
+      - example-service-2
+    environment:
+      - XDS_SERVER=istio-pilot:15010
+    networks:
+      - xds-network
+
+networks:
+  xds-network:
+    driver: bridge

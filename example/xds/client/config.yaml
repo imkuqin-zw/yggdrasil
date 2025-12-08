@@ -1,0 +1,36 @@
+# xDS Example Configuration for Client
+
+yggdrasil:
+  application:
+    name: "example-client"
+    version: "1.0.0"
+
+  # xDS configuration
+  xds:
+    server:
+      address: "localhost:15010"
+      useTLS: false
+    
+    node:
+      cluster: "example-cluster"
+      id: "example-client-instance-1"
+      buildVersion: "1.19.0"
+    
+    resources:
+      cds: true
+      eds: true
+    
+    timeout: 10s
+    retryInterval: 5s
+    maxRetries: 3
+    useADS: true
+
+  # Client configuration
+  client:
+    resolver: "xds"
+    balancer: "xds"
+    namespace: "default"
+
+  # Logging
+  logger:
+    level: "info"

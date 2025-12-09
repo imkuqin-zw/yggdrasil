@@ -231,8 +231,11 @@ func (app *Application) startServers() error {
 	}
 
 	eg.Go(func() error {
+		_, ok := <-svrStarCh
+		if !ok {
+			return nil
+		}
 		defer close(svrStarCh)
-		<-svrStarCh
 		app.register()
 		return nil
 	})

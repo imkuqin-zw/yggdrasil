@@ -220,11 +220,13 @@ func (s *server) Serve(startFlag chan<- struct{}) error {
 	s.mu.Unlock()
 	for _, svr := range s.servers {
 		if err := s.serve(svr); err != nil {
+			close(startFlag)
 			return err
 		}
 	}
 
 	if err := s.restServe(); err != nil {
+		close(startFlag)
 		return err
 	}
 

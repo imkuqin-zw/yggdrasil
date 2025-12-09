@@ -85,7 +85,7 @@ func (h *LDSHandler) processListener(lis *listener.Listener) error {
 		routeConfigName := rds.Rds.RouteConfigName
 		h.resourceManager.SetListenerRouteMapping(lis.Name, routeConfigName)
 
-		logger.InfoField("listener references RDS",
+		logger.DebugField("listener references RDS",
 			logger.String("listener", lis.Name),
 			logger.String("route", routeConfigName))
 
@@ -97,7 +97,7 @@ func (h *LDSHandler) processListener(lis *listener.Listener) error {
 		routeConfig := rds.RouteConfig
 		h.resourceManager.SetListenerRouteMapping(lis.Name, routeConfig.Name)
 
-		logger.InfoField("listener has inline route config",
+		logger.DebugField("listener has inline route config",
 			logger.String("listener", lis.Name),
 			logger.String("route", routeConfig.Name))
 

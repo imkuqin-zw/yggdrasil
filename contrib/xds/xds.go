@@ -129,9 +129,3 @@ func buildNodeInfo() *NodeInfo {
 
 	return node
 }
-
-// init registers the xDS implementations with the framework
-func init() {
-	// Implementations will register themselves in their respective files
-	logger.InfoField("xDS service governance module loaded")
-}

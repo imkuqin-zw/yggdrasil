@@ -19,8 +19,12 @@ import (
 	"fmt"
 	"sync"
 
+	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	config2 "github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
@@ -134,24 +138,295 @@ func (r *resolver) Name() string {
 
 // watcherInstance watches a specific service for endpoint updates
 type watcherInstance struct {
-	serviceName string
-	resolver    *resolver
-	mu          sync.Mutex
+	serviceName  string
+	resolver     *resolver
+	mu           sync.Mutex
+	listenerName string
+	routeName    string
+	clusterNames []string
 }
 
-// subscribe subscribes to EDS updates for the service
+// subscribe subscribes to LDS updates for the service
+// This starts the discovery chain: LDS → RDS → CDS → EDS
 func (w *watcherInstance) subscribe() error {
-	// Cluster name is typically the service name in Istio
-	clusterName := w.serviceName
+	// Use service name as listener name
+	w.listenerName = w.serviceName
 
-	// Subscribe to EDS
+	// Subscribe to LDS
+	handler := func(resourceType string, resources []interface{}) error {
+		return w.handleLDSUpdate(resources)
+	}
+
+	logger.DebugField("xDS resolver subscribing to LDS",
+		logger.String("listener", w.listenerName))
+
+	return w.resolver.client.Subscribe(
+		resource.ListenerType,
+		[]string{w.listenerName},
+		handler,
+	)
+}
+
+// handleLDSUpdate processes LDS updates
+func (w *watcherInstance) handleLDSUpdate(resources []interface{}) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, res := range resources {
+		anyRes, ok := res.(*anypb.Any)
+		if !ok {
+			logger.WarnField("unexpected resource type in LDS update")
+			continue
+		}
+
+		// Unmarshal Listener
+		lis := &listener.Listener{}
+		if err := anyRes.UnmarshalTo(lis); err != nil {
+			logger.ErrorField("failed to unmarshal Listener", logger.Err(err))
+			continue
+		}
+
+		// Only process the listener we're watching
+		if lis.Name != w.listenerName {
+			continue
+		}
+
+		logger.DebugField("xDS resolver received listener",
+			logger.String("listener", lis.Name))
+
+		// Extract HTTP Connection Manager and route config
+		if err := w.processListener(lis); err != nil {
+			logger.ErrorField("failed to process listener",
+				logger.String("listener", lis.Name),
+				logger.Err(err))
+			return err
+		}
+	}
+
+	return nil
+}
+
+// processListener extracts route configuration from listener
+func (w *watcherInstance) processListener(lis *listener.Listener) error {
+	// Find HTTP Connection Manager filter
+	httpConnMgr, err := w.extractHTTPConnectionManager(lis)
+	if err != nil {
+		return err
+	}
+
+	// Handle route configuration
+	switch rds := httpConnMgr.RouteSpecifier.(type) {
+	case *hcm.HttpConnectionManager_Rds:
+		// RDS reference - subscribe to RDS
+		routeConfigName := rds.Rds.RouteConfigName
+		w.routeName = routeConfigName
+
+		logger.DebugField("listener references RDS, subscribing",
+			logger.String("listener", lis.Name),
+			logger.String("route", routeConfigName))
+
+		// Subscribe to RDS
+		handler := func(resourceType string, resources []interface{}) error {
+			return w.handleRDSUpdate(resources)
+		}
+
+		return w.resolver.client.Subscribe(
+			resource.RouteType,
+			[]string{routeConfigName},
+			handler,
+		)
+
+	case *hcm.HttpConnectionManager_RouteConfig:
+		// Inline route configuration
+		routeConfig := rds.RouteConfig
+		w.routeName = routeConfig.Name
+
+		logger.InfoField("listener has inline route config",
+			logger.String("listener", lis.Name),
+			logger.String("route", routeConfig.Name))
+
+		// Process inline route directly
+		return w.handleRouteConfig(routeConfig)
+
+	default:
+		return fmt.Errorf("unsupported route specifier type")
+	}
+}
+
+// extractHTTPConnectionManager extracts the HTTP Connection Manager from a listener
+func (w *watcherInstance) extractHTTPConnectionManager(lis *listener.Listener) (*hcm.HttpConnectionManager, error) {
+	for _, filterChain := range lis.FilterChains {
+		for _, filter := range filterChain.Filters {
+			if filter.Name == "envoy.filters.network.http_connection_manager" {
+				httpConnMgr := &hcm.HttpConnectionManager{}
+
+				switch c := filter.ConfigType.(type) {
+				case *listener.Filter_TypedConfig:
+					if err := c.TypedConfig.UnmarshalTo(httpConnMgr); err != nil {
+						return nil, fmt.Errorf("failed to unmarshal HTTP connection manager: %w", err)
+					}
+					return httpConnMgr, nil
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("HTTP connection manager not found in listener")
+}
+
+// handleRDSUpdate processes RDS updates
+func (w *watcherInstance) handleRDSUpdate(resources []interface{}) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	for _, res := range resources {
+		anyRes, ok := res.(*anypb.Any)
+		if !ok {
+			logger.WarnField("unexpected resource type in RDS update")
+			continue
+		}
+
+		// Unmarshal RouteConfiguration
+		routeConfig := &route.RouteConfiguration{}
+		if err := anyRes.UnmarshalTo(routeConfig); err != nil {
+			logger.ErrorField("failed to unmarshal RouteConfiguration", logger.Err(err))
+			continue
+		}
+
+		// Only process the route we're watching
+		if routeConfig.Name != w.routeName {
+			continue
+		}
+
+		logger.DebugField("xDS resolver received route configuration",
+			logger.String("route", routeConfig.Name))
+
+		// Process route configuration
+		if err := w.handleRouteConfig(routeConfig); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// handleRouteConfig extracts clusters from route and subscribes to CDS
+func (w *watcherInstance) handleRouteConfig(routeConfig *route.RouteConfiguration) error {
+	// Extract all cluster names from the route
+	clusterNames := w.extractClustersFromRoute(routeConfig)
+	w.clusterNames = clusterNames
+
+	if len(clusterNames) == 0 {
+		logger.WarnField("no clusters found in route configuration",
+			logger.String("route", routeConfig.Name))
+		return nil
+	}
+
+	logger.DebugField("xDS resolver extracted clusters from route, subscribing to CDS",
+		logger.String("route", routeConfig.Name),
+		logger.Int("cluster_count", len(clusterNames)),
+		logger.Any("clusters", clusterNames))
+
+	// Subscribe to CDS for all clusters
+	handler := func(resourceType string, resources []interface{}) error {
+		return w.handleCDSUpdate(resources)
+	}
+
+	return w.resolver.client.Subscribe(
+		resource.ClusterType,
+		clusterNames,
+		handler,
+	)
+}
+
+// extractClustersFromRoute extracts all cluster names from a route configuration
+func (w *watcherInstance) extractClustersFromRoute(r *route.RouteConfiguration) []string {
+	clustersMap := make(map[string]bool)
+
+	for _, vh := range r.VirtualHosts {
+		for _, route := range vh.Routes {
+			if route.GetRoute() != nil {
+				// Single cluster
+				if cluster := route.GetRoute().GetCluster(); cluster != "" {
+					clustersMap[cluster] = true
+				}
+
+				// Weighted clusters
+				if wc := route.GetRoute().GetWeightedClusters(); wc != nil {
+					for _, c := range wc.Clusters {
+						clustersMap[c.Name] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	clusters := make([]string, 0, len(clustersMap))
+	for c := range clustersMap {
+		clusters = append(clusters, c)
+	}
+
+	return clusters
+}
+
+// handleCDSUpdate processes CDS updates and subscribes to EDS
+func (w *watcherInstance) handleCDSUpdate(resources []interface{}) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	var clustersToWatch []string
+
+	for _, res := range resources {
+		anyRes, ok := res.(*anypb.Any)
+		if !ok {
+			logger.WarnField("unexpected resource type in CDS update")
+			continue
+		}
+
+		// Unmarshal Cluster
+		cls := &cluster.Cluster{}
+		if err := anyRes.UnmarshalTo(cls); err != nil {
+			logger.ErrorField("failed to unmarshal Cluster", logger.Err(err))
+			continue
+		}
+
+		// Check if this cluster is one we're interested in
+		interested := false
+		for _, cn := range w.clusterNames {
+			if cls.Name == cn {
+				interested = true
+				break
+			}
+		}
+
+		if !interested {
+			continue
+		}
+
+		logger.DebugField("xDS resolver received cluster",
+			logger.String("cluster", cls.Name))
+
+		// Add to list of clusters to watch for endpoints
+		clustersToWatch = append(clustersToWatch, cls.Name)
+	}
+
+	if len(clustersToWatch) == 0 {
+		return nil
+	}
+
+	logger.DebugField("xDS resolver subscribing to EDS for clusters",
+		logger.Int("cluster_count", len(clustersToWatch)),
+		logger.Any("clusters", clustersToWatch))
+
+	// Subscribe to EDS for these clusters
 	handler := func(resourceType string, resources []interface{}) error {
 		return w.handleEDSUpdate(resources)
 	}
 
 	return w.resolver.client.Subscribe(
 		resource.EndpointType,
-		[]string{clusterName},
+		clustersToWatch,
 		handler,
 	)
 }
@@ -176,6 +451,10 @@ func (w *watcherInstance) handleEDSUpdate(resources []interface{}) error {
 			logger.ErrorField("failed to unmarshal ClusterLoadAssignment", logger.Err(err))
 			continue
 		}
+
+		logger.DebugField("xDS resolver received endpoints",
+			logger.String("cluster", cla.ClusterName),
+			logger.Int("locality_count", len(cla.Endpoints)))
 
 		// Extract endpoints from localities
 		for _, localityEndpoints := range cla.Endpoints {
@@ -211,15 +490,12 @@ func (w *watcherInstance) handleEDSUpdate(resources []interface{}) error {
 					health = HealthDegraded
 				}
 
-				// Build endpoint metadata
 				metadata := map[string]interface{}{
-					config2.KeySingleAddress:  address,
-					config2.KeySingleProtocol: "grpc", // Default to gRPC
-					"health":                  health.String(),
-					"priority":                priority,
-					"weight":                  weight,
+					"health":   health.String(),
+					"priority": priority,
+					"weight":   weight,
+					"cluster":  cla.ClusterName,
 				}
-
 				// Add locality information
 				if locality != nil {
 					metadata["locality"] = &Locality{
@@ -229,15 +505,20 @@ func (w *watcherInstance) handleEDSUpdate(resources []interface{}) error {
 					}
 				}
 
-				endpoints = append(endpoints, metadata)
+				// Build endpoint metadata
+				endpoint := map[string]interface{}{
+					config2.KeySingleAddress:  address,
+					config2.KeySingleProtocol: "grpc", // Default to gRPC
+					config2.KeySingleMetadata: metadata,
+				}
+
+				endpoints = append(endpoints, endpoint)
 			}
 		}
 	}
 
-	// Update configuration with new endpoints
-	// endpoints is already in the correct format: []interface{} containing map[string]interface{}
 	configKey := fmt.Sprintf(config2.KeyClientEndpoints, w.serviceName)
-	if err := config2.Set(configKey, endpoints); err != nil {
+	if err := config2.SetMulti([]string{configKey}, []interface{}{endpoints}); err != nil {
 		logger.ErrorField("failed to update endpoints configuration",
 			logger.String("service", w.serviceName),
 			logger.Err(err))
@@ -253,6 +534,6 @@ func (w *watcherInstance) handleEDSUpdate(resources []interface{}) error {
 
 // stop stops watching the service
 func (w *watcherInstance) stop() {
-	// In a full implementation, we would unsubscribe from EDS here
+	// In a full implementation, we would unsubscribe from all resources here
 	// For now, the client will handle cleanup when closed
 }

@@ -128,6 +128,9 @@ func (rm *RouteMatcher) matchRoute(r *route.Route, req *Request) bool {
 
 // matchPath checks if the path matches
 func (rm *RouteMatcher) matchPath(match *route.RouteMatch, path string) bool {
+	if match.PathSpecifier == nil {
+		return true
+	}
 	switch pathSpec := match.PathSpecifier.(type) {
 	case *route.RouteMatch_Prefix:
 		return strings.HasPrefix(path, pathSpec.Prefix)

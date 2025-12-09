@@ -2,18 +2,6 @@
 
 This package provides xDS (Envoy's data plane API) protocol integration for the Yggdrasil microservice framework, enabling advanced service mesh capabilities through integration with control planes like Istio Pilot.
 
-## Features
-
-- **Service Discovery**: Automatic service endpoint discovery via EDS (Endpoint Discovery Service)
-- **Load Balancing**: Intelligent load balancing with CDS (Cluster Discovery Service) supporting:
-  - Round Robin
-  - Random
-  - Least Request
-- **Health Checking**: Endpoint health status tracking and filtering
-- **Locality Awareness**: Support for region/zone/subzone based routing
-- **Dynamic Configuration**: Real-time updates from xDS control plane
-- **TLS Support**: Secure connections to xDS server with mutual TLS
-
 ## Supported xDS APIs
 
 - **LDS** (Listener Discovery Service): Listener configuration
@@ -21,160 +9,43 @@ This package provides xDS (Envoy's data plane API) protocol integration for the 
 - **CDS** (Cluster Discovery Service): Cluster/service configuration
 - **EDS** (Endpoint Discovery Service): Endpoint/instance discovery
 
-## Configuration
-
-### Basic Configuration (gRPC)
-
-```yaml
-yggdrasil:
-  xds:
-    server:
-      address: "localhost:15010"
-      useTLS: false
-    node:
-      cluster: "my-cluster"
-      id: "my-service-instance-1"
-    resources:
-      lds: true
-      rds: true
-      cds: true
-      eds: true
-```
-
-### TLS Configuration
-
-```yaml
-yggdrasil:
-  xds:
-    server:
-      address: "localhost"
-      useTLS: true
-      tlsPort: 15011
-    tls:
-      enabled: true
-      caCert: "/path/to/ca.crt"
-      clientCert: "/path/to/client.crt"
-      clientKey: "/path/to/client.key"
-      serverName: "istiod.istio-system.svc"
-    node:
-      cluster: "my-cluster"
-      id: "my-service-instance-1"
-```
-
-### Advanced Configuration
-
-```yaml
-yggdrasil:
-  xds:
-    server:
-      address: "localhost:15010"
-    node:
-      cluster: "production-cluster"
-      id: "service-v1-abc123"
-      locality:
-        region: "us-west"
-        zone: "us-west-1a"
-        subZone: "rack-1"
-      metadata:
-        version: "1.0.0"
-        environment: "production"
-    resources:
-      lds: true
-      rds: true
-      cds: true
-      eds: true
-      clusterNames:
-        - "my-service"
-        - "other-service"
-    timeout: 10s
-    retryInterval: 5s
-    maxRetries: 3
-    useADS: true
-```
-
-## Usage
-
-### Using xDS Resolver
-
-```go
-import (
-    "github.com/imkuqin-zw/yggdrasil"
-    _ "github.com/imkuqin-zw/yggdrasil/contrib/xds"
-)
-
-func main() {
-    // The xDS resolver is automatically registered
-    // Configure your client to use xDS for service discovery
-    yggdrasil.Run("my-service",
-        yggdrasil.WithResolver("xds"),
-        // ... other options
-    )
-}
-```
-
-### Using xDS Balancer
-
-```go
-import (
-    "github.com/imkuqin-zw/yggdrasil"
-    _ "github.com/imkuqin-zw/yggdrasil/contrib/xds"
-)
-
-func main() {
-    yggdrasil.Run("my-service",
-        yggdrasil.WithBalancer("xds"),
-        // ... other options
-    )
-}
-```
-
-### Using xDS Registry
-
-```go
-import (
-    "github.com/imkuqin-zw/yggdrasil"
-    _ "github.com/imkuqin-zw/yggdrasil/contrib/xds"
-)
-
-func main() {
-    // Note: xDS registry is primarily for discovery
-    // Registration is typically handled by the control plane
-    yggdrasil.Run("my-service",
-        yggdrasil.WithRegistry("xds"),
-        // ... other options
-    )
-}
-```
-
-## Integration with Istio
-
-This package is designed to work with Istio Pilot 1.19.0 and later versions.
-
-### Prerequisites
-
-1. **Install Istio** in your Kubernetes cluster or run Istio Pilot standalone
-2. **Configure Pilot** to expose xDS endpoints:
-   - gRPC: port 15010 (default)
-   - gRPC with TLS: port 15011
-
-### Docker Setup
-
-```bash
-# Run Istio Pilot in Docker
-docker run -d \
-  --name istio-pilot \
-  -p 15010:15010 \
-  -p 15011:15011 \
-  istio/pilot:1.19.0
-```
-
 ### Service Discovery Flow
 
-1. Your service starts and connects to Istio Pilot via xDS
-2. The xDS client subscribes to EDS for service endpoints
-3. Istio Pilot pushes endpoint updates to your service
-4. The resolver updates the framework's configuration
-5. The balancer uses the updated endpoints for load balancing
+The xDS resolver follows the standard xDS discovery protocol chain:
+
+1. **LDS (Listener Discovery Service)**: Your service connects to the xDS control plane and subscribes to LDS using the service name as the listener name
+2. **RDS (Route Discovery Service)**: The listener configuration contains route information (either inline or as an RDS reference). If it's an RDS reference, the resolver subscribes to RDS to get the route configuration
+3. **CDS (Cluster Discovery Service)**: The route configuration contains cluster references. The resolver extracts all cluster names and subscribes to CDS
+4. **EDS (Endpoint Discovery Service)**: For each cluster, the resolver subscribes to EDS to get the actual endpoint addresses
+5. **Configuration Update**: The resolver updates the framework's configuration with the discovered endpoints
+6. **Load Balancing**: The balancer uses the updated endpoints for intelligent load balancing
+
+```
+Client Service Name
+       ↓
+   LDS Request (listener name = service name)
+       ↓
+   Listener Config
+       ↓
+   RDS Request (if route is referenced) OR Inline Route
+       ↓
+   Route Config (contains cluster names)
+       ↓
+   CDS Request (for discovered clusters)
+       ↓
+   Cluster Configs
+       ↓
+   EDS Request (for each cluster)
+       ↓
+   Endpoints (IP:Port)
+```
+
+This design allows for:
+- **Dynamic routing**: Routes can be updated without restarting services
+- **Traffic splitting**: Multiple clusters can be configured with weights
+- **A/B testing**: Different versions can be routed based on headers
+- **Canary deployments**: Gradual rollout of new versions
+
 
 ## Load Balancing Policies
 
@@ -217,7 +88,7 @@ The client includes robust error handling:
 ### Connection Issues
 
 ```bash
-# Check if Istio Pilot is running
+# Check if xDS control plane (e.g., Istio Pilot) is running
 curl http://localhost:15010/ready
 
 # Check xDS client logs
@@ -226,10 +97,41 @@ curl http://localhost:15010/ready
 
 ### No Endpoints Discovered
 
-1. Verify service is registered in Istio
-2. Check cluster name matches service name
-3. Ensure EDS subscription is active
-4. Review Istio Pilot logs for errors
+The resolver follows a chain: LDS → RDS → CDS → EDS. Check each step:
+
+1. **Verify LDS subscription**:
+   - Look for log: `xDS resolver subscribing to LDS (listener=<service-name>)`
+   - Ensure the listener name matches your service name
+
+2. **Check listener configuration**:
+   - Look for log: `xDS resolver received listener`
+   - Verify the listener contains route configuration
+
+3. **Verify route discovery**:
+   - For RDS: Look for `listener references RDS, subscribing`
+   - For inline: Look for `listener has inline route config`
+   - Check log: `xDS resolver received route configuration`
+
+4. **Check cluster extraction**:
+   - Look for log: `xDS resolver extracted clusters from route`
+   - Verify cluster names are correct
+
+5. **Verify CDS subscription**:
+   - Look for log: `xDS resolver subscribing to CDS`
+   - Check log: `xDS resolver received cluster`
+
+6. **Check EDS subscription**:
+   - Look for log: `xDS resolver subscribing to EDS for clusters`
+   - Check log: `xDS resolver received endpoints`
+
+7. **Verify final update**:
+   - Look for log: `xDS resolver updated endpoints (count=N)`
+
+**Common issues**:
+- Service name doesn't match listener name in control plane
+- Route configuration doesn't reference any clusters
+- Cluster names in route don't exist in control plane
+- No healthy endpoints available for the cluster
 
 ### TLS Errors
 
@@ -237,6 +139,33 @@ curl http://localhost:15010/ready
 2. Check certificate validity
 3. Ensure server name matches certificate CN
 4. Verify CA certificate is trusted
+
+### Debug Logging
+
+Enable debug logging to see the full discovery chain:
+
+```yaml
+yggdrasil:
+  logger:
+    level: debug  # or info
+```
+
+Look for the sequence:
+```
+INFO  xDS resolver subscribing to LDS (listener=my-service)
+INFO  xDS resolver received listener (listener=my-service)
+INFO  listener references RDS, subscribing (route=my-route)
+INFO  xDS resolver received route configuration (route=my-route)
+INFO  xDS resolver extracted clusters from route (cluster_count=2, clusters=[cluster-v1, cluster-v2])
+INFO  xDS resolver subscribing to CDS
+INFO  xDS resolver received cluster (cluster=cluster-v1)
+INFO  xDS resolver received cluster (cluster=cluster-v2)
+INFO  xDS resolver subscribing to EDS for clusters (cluster_count=2)
+INFO  xDS resolver received endpoints (cluster=cluster-v1, locality_count=1)
+INFO  xDS resolver received endpoints (cluster=cluster-v2, locality_count=1)
+INFO  xDS resolver updated endpoints (service=my-service, count=10)
+```
+
 
 ## Performance Considerations
 

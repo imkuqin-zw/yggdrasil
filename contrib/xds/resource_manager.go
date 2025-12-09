@@ -64,7 +64,7 @@ func (rm *ResourceManager) UpdateLDS(listeners []*listener.Listener) error {
 
 	for _, lis := range listeners {
 		rm.listeners[lis.Name] = lis
-		logger.InfoField("resource manager updated listener",
+		logger.DebugField("resource manager updated listener",
 			logger.String("name", lis.Name))
 	}
 
@@ -83,7 +83,7 @@ func (rm *ResourceManager) UpdateRDS(routes []*route.RouteConfiguration) error {
 		clusters := rm.extractClustersFromRoute(r)
 		rm.routeToClusters[r.Name] = clusters
 
-		logger.InfoField("resource manager updated route",
+		logger.DebugField("resource manager updated route",
 			logger.String("name", r.Name),
 			logger.Int("clusters", len(clusters)))
 	}

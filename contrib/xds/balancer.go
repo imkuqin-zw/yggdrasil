@@ -124,7 +124,7 @@ func (b *balancer) handleCDSUpdate(resources []interface{}) error {
 			Metadata: make(map[string]interface{}),
 		}
 
-		logger.InfoField("xDS balancer updated cluster config",
+		logger.DebugField("xDS balancer updated cluster config",
 			logger.String("cluster", c.Name),
 			logger.String("lbPolicy", lbPolicy))
 	}

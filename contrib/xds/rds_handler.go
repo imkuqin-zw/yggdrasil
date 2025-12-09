@@ -52,7 +52,7 @@ func (h *RDSHandler) HandleUpdate(resources []interface{}) error {
 
 		routes = append(routes, routeConfig)
 
-		logger.InfoField("RDS handler received route configuration",
+		logger.DebugField("RDS handler received route configuration",
 			logger.String("name", routeConfig.Name),
 			logger.Int("virtual_hosts", len(routeConfig.VirtualHosts)))
 	}

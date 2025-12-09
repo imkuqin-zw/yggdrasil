@@ -368,7 +368,7 @@ func (c *Client) Subscribe(resourceType string, resourceNames []string, handler 
 		}
 	}
 
-	logger.InfoField("subscribed to xDS resource",
+	logger.DebugField("subscribed to xDS resource",
 		logger.String("type", resourceType),
 		logger.Any("names", resourceNames))
 

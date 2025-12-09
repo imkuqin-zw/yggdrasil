@@ -25,6 +25,7 @@ import (
 	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	// Import xDS contrib module
 	_ "github.com/imkuqin-zw/yggdrasil/contrib/xds"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 )
 
 func main() {
@@ -35,6 +36,13 @@ func main() {
 	client := hellowordpb.NewGreeterClient(yggdrasil.NewClient("yggdrasil.example.xds.server"))
 	ctx := metadata.WithOutContext(context.Background(), metadata.New(map[string]string{"node": "a"}))
 	res, err := client.SayHello(ctx, &hellowordpb.HelloRequest{Name: "fdasf"})
+	if err != nil {
+		logger.Fatal(err)
+	}
+	logger.Infof("call success, resp: %s", res.Message)
+
+	ctx = metadata.WithOutContext(context.Background(), metadata.New(map[string]string{"node": "b"}))
+	res, err = client.SayHello(ctx, &hellowordpb.HelloRequest{Name: "fdasf"})
 	if err != nil {
 		logger.Fatal(err)
 	}

@@ -28,9 +28,9 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"gopkg.in/yaml.v3"
 
-	"github.com/imkuqin-zw/yggdrasil/example/xds/control-plane/pkg/server"
-	"github.com/imkuqin-zw/yggdrasil/example/xds/control-plane/pkg/snapshot"
-	"github.com/imkuqin-zw/yggdrasil/example/xds/control-plane/pkg/watcher"
+	"github.com/imkuqin-zw/yggdrasil/example/xds/control-plane/server"
+	"github.com/imkuqin-zw/yggdrasil/example/xds/control-plane/snapshot"
+	"github.com/imkuqin-zw/yggdrasil/example/xds/control-plane/watcher"
 )
 
 // Config represents the server configuration

@@ -1,0 +1,54 @@
+# Simplified xDS Configuration
+# This file defines the xDS resources that will be distributed to clients
+
+clusters:
+  - name: "service-a"
+    connectTimeout: "5s"
+    type: "STRICT_DNS"
+    lbPolicy: "ROUND_ROBIN"
+    
+  - name: "service-b"
+    connectTimeout: "5s"
+    type: "STRICT_DNS"
+    lbPolicy: "ROUND_ROBIN"
+
+endpoints:
+  - clusterName: "service-a"
+    endpoints:
+      - address: "127.0.0.1"
+        port: 10010
+        
+  - clusterName: "service-b"
+    endpoints:
+      - address: "127.0.0.1"
+        port: 10011
+
+listeners:
+  - name: "yggdrasil.example.xds.server"
+    address: "0.0.0.0"
+    port: 10000
+    filterChains:
+      - filters:
+          - name: "envoy.filters.network.http_connection_manager"
+            routeConfigName: "service_route"
+
+routes:
+  - name: "service_route"
+    virtualHosts:
+      - name: "service"
+        domains: ["*"]
+        routes:
+          - match:
+              headers:
+                - name: node
+                  pattern: exact
+                  value: "a"
+            route:
+              cluster: "service-a"
+          - match:
+              headers:
+                - name: node
+                  pattern: exact
+                  value: "b"
+            route:
+              cluster: "service-b"

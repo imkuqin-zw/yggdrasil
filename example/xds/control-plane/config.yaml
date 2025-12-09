@@ -1,0 +1,10 @@
+server:
+  port: 15010
+  nodeID: "xds-control-plane"
+  
+xds:
+  configFile: "xds-config.yaml"
+  watchInterval: 1s
+  
+logging:
+  level: "info"

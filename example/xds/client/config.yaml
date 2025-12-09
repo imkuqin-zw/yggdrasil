@@ -13,7 +13,7 @@ yggdrasil:
 
   # Logging
   logger:
-    level: "debug"
+    level: "info"
 
 # xDS configuration
 xds:

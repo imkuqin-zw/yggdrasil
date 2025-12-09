@@ -25,6 +25,7 @@ import (
 	balancer2 "github.com/imkuqin-zw/yggdrasil/pkg/balancer"
 	config2 "github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
+	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
 	resolver2 "github.com/imkuqin-zw/yggdrasil/pkg/resolver"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -279,8 +280,14 @@ func (p *picker) extractRequest(ri balancer2.RpcInfo) *Request {
 	// This depends on the framework's RpcInfo implementation
 	// For now, we'll use basic extraction
 	if ctx := ri.Ctx; ctx != nil {
-		// TODO: Extract headers from context
-		// This is framework-specific
+		// Extract headers from context
+		md, ok := metadata.FromOutContext(ctx)
+		if ok {
+			req.Headers = make(map[string]string, len(md))
+			for k, v := range md {
+				req.Headers[k] = strings.Join(v, ";")
+			}
+		}
 	}
 
 	// Extract host

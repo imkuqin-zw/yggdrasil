@@ -99,11 +99,9 @@ func NewClient(config Config) (*Client, error) {
 	}
 
 	// Start ADS stream if enabled
-	if config.UseADS {
-		if err := client.startADS(); err != nil {
-			client.Close()
-			return nil, err
-		}
+	if err := client.startADS(); err != nil {
+		_ = client.Close()
+		return nil, err
 	}
 
 	logger.InfoField("xDS client connected",
@@ -421,34 +419,32 @@ func (c *Client) reconnect() error {
 	}
 
 	// Restart ADS
-	if c.config.UseADS {
-		if err := c.startADS(); err != nil {
+	if err := c.startADS(); err != nil {
+		return err
+	}
+
+	// Resubscribe to all resources
+	c.subMu.RLock()
+	for resourceType, names := range c.subscriptions {
+		resourceNames := make([]string, 0, len(names))
+		for name := range names {
+			resourceNames = append(resourceNames, name)
+		}
+		c.subMu.RUnlock()
+
+		req := &discovery.DiscoveryRequest{
+			TypeUrl:       resourceType,
+			Node:          c.node,
+			ResourceNames: resourceNames,
+		}
+
+		if err := c.adsClient.Send(req); err != nil {
 			return err
 		}
 
-		// Resubscribe to all resources
 		c.subMu.RLock()
-		for resourceType, names := range c.subscriptions {
-			resourceNames := make([]string, 0, len(names))
-			for name := range names {
-				resourceNames = append(resourceNames, name)
-			}
-			c.subMu.RUnlock()
-
-			req := &discovery.DiscoveryRequest{
-				TypeUrl:       resourceType,
-				Node:          c.node,
-				ResourceNames: resourceNames,
-			}
-
-			if err := c.adsClient.Send(req); err != nil {
-				return err
-			}
-
-			c.subMu.RLock()
-		}
-		c.subMu.RUnlock()
 	}
+	c.subMu.RUnlock()
 
 	return nil
 }

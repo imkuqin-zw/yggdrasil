@@ -36,9 +36,6 @@ type Config struct {
 	Timeout       time.Duration `yaml:"timeout" json:"timeout" default:"10s"`
 	RetryInterval time.Duration `yaml:"retryInterval" json:"retryInterval" default:"5s"`
 	MaxRetries    int           `yaml:"maxRetries" json:"maxRetries" default:"3"`
-
-	// ADS (Aggregated Discovery Service) settings
-	UseADS bool `yaml:"useADS" json:"useADS" default:"true"`
 }
 
 // ServerConfig contains xDS server connection settings
@@ -145,7 +142,6 @@ func DefaultConfig() Config {
 		Timeout:       10 * time.Second,
 		RetryInterval: 5 * time.Second,
 		MaxRetries:    3,
-		UseADS:        true,
 	}
 }
 

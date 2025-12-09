@@ -2,35 +2,35 @@
 
 yggdrasil:
   application:
-    name: "example-client"
+    name: "yggdrasil.example.xds.client"
     version: "1.0.0"
-
-  # xDS configuration
-  xds:
-    server:
-      address: "localhost:15010"
-      useTLS: false
-    
-    node:
-      cluster: "example-cluster"
-      id: "example-client-instance-1"
-      buildVersion: "1.19.0"
-    
-    resources:
-      cds: true
-      eds: true
-    
-    timeout: 10s
-    retryInterval: 5s
-    maxRetries: 3
-    useADS: true
 
   # Client configuration
   client:
-    resolver: "xds"
-    balancer: "xds"
-    namespace: "default"
+    yggdrasil.example.xds.server:
+      resolver: "xds"
+      balancer: "xds"
 
   # Logging
   logger:
-    level: "info"
+    level: "debug"
+
+# xDS configuration
+xds:
+  server:
+    address: "localhost:15010"
+    useTLS: false
+
+  node:
+    cluster: "yggdrasil.example.xds.client"
+    id: "yggdrasil.example.xds.client.1"
+    buildVersion: "1.19.0"
+
+  resources:
+    cds: true
+    eds: true
+
+  timeout: 10s
+  retryInterval: 5s
+  maxRetries: 3
+  useADS: true

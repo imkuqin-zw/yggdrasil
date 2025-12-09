@@ -1,0 +1,18 @@
+yggdrasil:
+  server:
+    protocol:
+      - "grpc"
+
+  remote:
+    protocol:
+      grpc:
+        address: "127.0.0.1:10011"
+    logger:
+      level: error
+
+  interceptor:
+    unaryServer: "logger"
+    streamServer: "logger"
+    config:
+      logger:
+        printReqAndRes: true

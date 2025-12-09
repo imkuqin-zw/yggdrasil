@@ -16,28 +16,37 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/imkuqin-zw/yggdrasil"
 	hellowordpb "github.com/imkuqin-zw/yggdrasil/example/protogen/helloword"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config"
 	"github.com/imkuqin-zw/yggdrasil/pkg/config/source/file"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/interceptor/logging"
 	"github.com/imkuqin-zw/yggdrasil/pkg/logger"
-	"github.com/imkuqin-zw/yggdrasil/pkg/metadata"
-	// Import xDS contrib module
-	_ "github.com/imkuqin-zw/yggdrasil/contrib/xds"
+	_ "github.com/imkuqin-zw/yggdrasil/pkg/remote/protocol/grpc"
 )
+
+type greeter struct {
+	hellowordpb.UnimplementedGreeterServer
+}
+
+func (s *greeter) SayHello(ctx context.Context, request *hellowordpb.HelloRequest) (*hellowordpb.HelloReply, error) {
+	msg := fmt.Sprintf("service-a hello %s", request.GetName())
+	return &hellowordpb.HelloReply{Message: msg}, nil
+}
 
 func main() {
 	if err := config.LoadSource(file.NewSource("./config.yaml", false)); err != nil {
-		logger.Fatal(err)
+		logger.FatalField("fault to load config file", logger.Err(err))
 	}
-	yggdrasil.Init("yggdrasil.example.xds.client")
-	client := hellowordpb.NewGreeterClient(yggdrasil.NewClient("yggdrasil.example.xds.server"))
-	ctx := metadata.WithOutContext(context.Background(), metadata.New(map[string]string{"node": "a"}))
-	res, err := client.SayHello(ctx, &hellowordpb.HelloRequest{Name: "fdasf"})
-	if err != nil {
-		logger.Fatal(err)
-	}
+	yggdrasil.Init("yggdrasil.example.xds.server")
+	ss := &greeter{}
 
-	logger.Infof("call success, resp: %s", res.Message)
+	if err := yggdrasil.Serve(
+		yggdrasil.WithServiceDesc(&hellowordpb.GreeterServiceDesc, ss),
+	); err != nil {
+		logger.FatalField("the application was ended forcefully ", logger.Err(err))
+		logger.Fatal(err)
+	}
 }

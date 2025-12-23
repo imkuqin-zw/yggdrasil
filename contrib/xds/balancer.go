@@ -49,6 +49,11 @@ type balancer struct {
 
 	// Endpoints per cluster
 	clusterEndpoints map[string][]*Endpoint // clusterName -> endpoints
+
+	// Resilience components per cluster
+	circuitBreakers  map[string]*CircuitBreaker
+	outlierDetectors map[string]*OutlierDetector
+	rateLimiters     map[string]*RateLimiter
 }
 
 // newBalancer creates a new xDS balancer
@@ -66,6 +71,9 @@ func newBalancer(serviceName string) balancer2.Balancer {
 		routeMatcher:     NewRouteMatcher(client.resourceManager),
 		clusters:         make(map[string]*ClusterInfo),
 		clusterEndpoints: make(map[string][]*Endpoint),
+		circuitBreakers:  make(map[string]*CircuitBreaker),
+		outlierDetectors: make(map[string]*OutlierDetector),
+		rateLimiters:     make(map[string]*RateLimiter),
 	}
 
 	// Subscribe to LDS for this service
@@ -118,11 +126,105 @@ func (b *balancer) handleCDSUpdate(resources []interface{}) error {
 			lbPolicy = "random"
 		}
 
-		b.clusters[c.Name] = &ClusterInfo{
+		clusterInfo := &ClusterInfo{
 			Name:     c.Name,
 			LbPolicy: lbPolicy,
 			Metadata: make(map[string]interface{}),
 		}
+
+		// Parse circuit breaker thresholds
+		if c.CircuitBreakers != nil && len(c.CircuitBreakers.Thresholds) > 0 {
+			threshold := c.CircuitBreakers.Thresholds[0]
+			clusterInfo.CircuitBreaker = &CircuitBreakerConfig{
+				MaxConnections:     threshold.MaxConnections.GetValue(),
+				MaxPendingRequests: threshold.MaxPendingRequests.GetValue(),
+				MaxRequests:        threshold.MaxRequests.GetValue(),
+				MaxRetries:         threshold.MaxRetries.GetValue(),
+			}
+
+			// Initialize circuit breaker
+			b.circuitBreakers[c.Name] = NewCircuitBreaker(clusterInfo.CircuitBreaker)
+
+			logger.InfoField("circuit breaker configured for cluster",
+				logger.String("cluster", c.Name),
+				logger.Uint32("maxConnections", clusterInfo.CircuitBreaker.MaxConnections),
+				logger.Uint32("maxRequests", clusterInfo.CircuitBreaker.MaxRequests))
+		}
+
+		// Parse outlier detection configuration
+		if c.OutlierDetection != nil {
+			od := c.OutlierDetection
+			clusterInfo.OutlierDetection = &OutlierDetectionConfig{
+				Consecutive5xx:                 od.Consecutive_5Xx.GetValue(),
+				ConsecutiveGatewayFailure:      od.ConsecutiveGatewayFailure.GetValue(),
+				ConsecutiveLocalOriginFailure:  od.ConsecutiveLocalOriginFailure.GetValue(),
+				Interval:                       od.Interval.AsDuration(),
+				BaseEjectionTime:               od.BaseEjectionTime.AsDuration(),
+				MaxEjectionTime:                od.MaxEjectionTime.AsDuration(),
+				MaxEjectionPercent:             od.MaxEjectionPercent.GetValue(),
+				EnforcingConsecutive5xx:        od.EnforcingConsecutive_5Xx.GetValue(),
+				EnforcingSuccessRate:           od.EnforcingSuccessRate.GetValue(),
+				SuccessRateMinimumHosts:        od.SuccessRateMinimumHosts.GetValue(),
+				SuccessRateRequestVolume:       od.SuccessRateRequestVolume.GetValue(),
+				SuccessRateStdevFactor:         od.SuccessRateStdevFactor.GetValue(),
+				FailurePercentageThreshold:     od.FailurePercentageThreshold.GetValue(),
+				EnforcingFailurePercentage:     od.EnforcingFailurePercentage.GetValue(),
+				FailurePercentageMinimumHosts:  od.FailurePercentageMinimumHosts.GetValue(),
+				FailurePercentageRequestVolume: od.FailurePercentageRequestVolume.GetValue(),
+				SplitExternalLocalOriginErrors: od.SplitExternalLocalOriginErrors,
+			}
+
+			// Initialize outlier detector
+			// Stop existing detector if present
+			if oldDetector, ok := b.outlierDetectors[c.Name]; ok {
+				oldDetector.Stop()
+			}
+
+			detector := NewOutlierDetector(clusterInfo.OutlierDetection)
+			b.outlierDetectors[c.Name] = detector
+			detector.Start()
+
+			logger.InfoField("outlier detection configured for cluster",
+				logger.String("cluster", c.Name),
+				logger.Uint32("consecutive5xx", clusterInfo.OutlierDetection.Consecutive5xx),
+				logger.Duration("interval", clusterInfo.OutlierDetection.Interval))
+		}
+
+		// Parse rate limit from cluster metadata
+		if metadata := c.Metadata; metadata != nil {
+			if filterMetadata, ok := metadata.FilterMetadata["yggdrasil.rate_limit"]; ok {
+				if fields := filterMetadata.Fields; fields != nil {
+					rlConfig := &RateLimitConfig{}
+					if v, ok := fields["max_tokens"]; ok {
+						rlConfig.MaxTokens = uint32(v.GetNumberValue())
+					}
+					if v, ok := fields["tokens_per_fill"]; ok {
+						rlConfig.TokensPerFill = uint32(v.GetNumberValue())
+					}
+					if v, ok := fields["fill_interval"]; ok {
+						rlConfig.FillInterval = time.Duration(v.GetNumberValue()) * time.Second
+					}
+
+					if rlConfig.MaxTokens > 0 {
+						clusterInfo.RateLimiter = rlConfig
+
+						// Stop existing rate limiter if present
+						if oldLimiter, ok := b.rateLimiters[c.Name]; ok {
+							oldLimiter.Stop()
+						}
+
+						limiter := NewRateLimiter(rlConfig)
+						b.rateLimiters[c.Name] = limiter
+
+						logger.InfoField("rate limit configured for cluster",
+							logger.String("cluster", c.Name),
+							logger.Uint32("maxTokens", rlConfig.MaxTokens))
+					}
+				}
+			}
+		}
+
+		b.clusters[c.Name] = clusterInfo
 
 		logger.DebugField("xDS balancer updated cluster config",
 			logger.String("cluster", c.Name),
@@ -188,6 +290,19 @@ func (b *balancer) Update(cfg config2.Values) {
 
 // Close closes the balancer
 func (b *balancer) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// Stop all outlier detectors
+	for _, od := range b.outlierDetectors {
+		od.Stop()
+	}
+
+	// Stop all rate limiters
+	for _, rl := range b.rateLimiters {
+		rl.Stop()
+	}
+
 	logger.InfoField("xDS balancer closed", logger.String("service", b.serviceName))
 	return nil
 }
@@ -223,25 +338,58 @@ func (p *picker) Next(ri balancer2.RpcInfo) (balancer2.PickResult, error) {
 			logger.Err(err))
 	}
 
+	// Check rate limiter first
+	p.balancer.mu.RLock()
+	rateLimiter := p.balancer.rateLimiters[clusterName]
+	p.balancer.mu.RUnlock()
+
+	if rateLimiter != nil && !rateLimiter.Allow() {
+		return nil, ErrRateLimitExceeded
+	}
+
+	// Try to acquire circuit breaker slot
+	p.balancer.mu.RLock()
+	circuitBreaker := p.balancer.circuitBreakers[clusterName]
+	p.balancer.mu.RUnlock()
+
+	if circuitBreaker != nil {
+		if !circuitBreaker.TryAcquire(ResourceRequest) {
+			return nil, ErrCircuitBreakerOpen
+		}
+	}
+
 	// Get endpoints for the selected cluster
 	p.balancer.mu.RLock()
 	endpoints := p.balancer.clusterEndpoints[clusterName]
 	clusterInfo := p.balancer.clusters[clusterName]
+	outlierDetector := p.balancer.outlierDetectors[clusterName]
 	p.balancer.mu.RUnlock()
 
 	if len(endpoints) == 0 {
+		// Release circuit breaker slot if acquired
+		if circuitBreaker != nil {
+			circuitBreaker.Release(ResourceRequest)
+		}
 		return nil, balancer2.ErrNoAvailableInstance
 	}
 
-	// Filter healthy endpoints
+	// Filter healthy endpoints (not ejected by outlier detection)
 	healthyEndpoints := make([]*Endpoint, 0, len(endpoints))
 	for _, ep := range endpoints {
 		if ep.IsHealthy() {
+			// Check if endpoint is ejected by outlier detection
+			if outlierDetector != nil && outlierDetector.IsEjected(ep.Address) {
+				continue
+			}
 			healthyEndpoints = append(healthyEndpoints, ep)
 		}
 	}
 
 	if len(healthyEndpoints) == 0 {
+		// Release circuit breaker slot if acquired
+		if circuitBreaker != nil {
+			circuitBreaker.Release(ResourceRequest)
+		}
 		return nil, balancer2.ErrNoAvailableInstance
 	}
 
@@ -254,8 +402,12 @@ func (p *picker) Next(ri balancer2.RpcInfo) (balancer2.PickResult, error) {
 	selectedEndpoint := p.selectEndpoint(healthyEndpoints, lbPolicy)
 
 	result := &pickResult{
-		endpoint: selectedEndpoint,
-		report:   func(err error) { p.reportResult(selectedEndpoint, err) },
+		endpoint:        selectedEndpoint,
+		circuitBreaker:  circuitBreaker,
+		outlierDetector: outlierDetector,
+		report: func(err error) {
+			p.reportResult(selectedEndpoint, circuitBreaker, outlierDetector, err)
+		},
 	}
 
 	return result, nil
@@ -356,7 +508,24 @@ func (p *picker) selectEndpoint(endpoints []*Endpoint, lbPolicy string) *Endpoin
 }
 
 // reportResult reports the result of an RPC call
-func (p *picker) reportResult(endpoint *Endpoint, err error) {
+func (p *picker) reportResult(endpoint *Endpoint, cb *CircuitBreaker, od *OutlierDetector, err error) {
+	// Release circuit breaker slot
+	if cb != nil {
+		cb.Release(ResourceRequest)
+	}
+
+	// Report to outlier detector
+	if od != nil {
+		// Extract status code from error if available
+		statusCode := 200
+		if err != nil {
+			// Default to 500 for errors
+			statusCode = 500
+			// TODO: Extract actual status code from error if available
+		}
+		od.ReportResult(endpoint.Address, err, statusCode)
+	}
+
 	if err != nil {
 		logger.WarnField("RPC call failed",
 			logger.String("endpoint", endpoint.Address),
@@ -369,8 +538,10 @@ func (p *picker) reportResult(endpoint *Endpoint, err error) {
 
 // pickResult implements the balancer.PickResult interface
 type pickResult struct {
-	endpoint *Endpoint
-	report   func(err error)
+	endpoint        *Endpoint
+	circuitBreaker  *CircuitBreaker
+	outlierDetector *OutlierDetector
+	report          func(err error)
 }
 
 // Endpoint returns the selected endpoint

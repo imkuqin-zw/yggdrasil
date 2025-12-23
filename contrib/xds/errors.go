@@ -15,27 +15,43 @@
 package xds
 
 import (
+	"errors"
 	"fmt"
 )
 
 // Error types for xDS operations
 var (
-	ErrClientClosed     = fmt.Errorf("xds: client is closed")
-	ErrConnectionFailed = fmt.Errorf("xds: connection failed")
-	ErrInvalidResponse  = fmt.Errorf("xds: invalid response from server")
-	ErrResourceNotFound = fmt.Errorf("xds: resource not found")
-	ErrTimeout          = fmt.Errorf("xds: operation timeout")
-	ErrNoEndpoints      = fmt.Errorf("xds: no available endpoints")
+	// ErrClientClosed is returned when the client is closed
+	ErrClientClosed = errors.New("xDS client is closed")
+
+	// ErrConnectionFailed is returned when connection to xDS server fails
+	ErrConnectionFailed = errors.New("failed to connect to xDS server")
+
+	// ErrInvalidConfig is returned when configuration is invalid
+	ErrInvalidConfig = errors.New("invalid xDS configuration")
+
+	// ErrNoRouteMatch is returned when no route matches the request
+	ErrNoRouteMatch = errors.New("no route match found")
+
+	// ErrNoCluster is returned when no cluster is found
+	ErrNoCluster = errors.New("no cluster found")
+
+	// ErrNoEndpoints is returned when no endpoints are available
+	ErrNoEndpoints = errors.New("no endpoints available")
+
+	// ErrCircuitBreakerOpen is returned when circuit breaker is open
+	ErrCircuitBreakerOpen = errors.New("circuit breaker open")
+
+	// ErrRateLimitExceeded is returned when rate limit is exceeded
+	ErrRateLimitExceeded = errors.New("rate limit exceeded")
+
+	// ErrEndpointEjected is returned when endpoint is ejected by outlier detection
+	ErrEndpointEjected = errors.New("endpoint ejected by outlier detection")
 )
 
-// ErrInvalidConfig creates a configuration error
-func ErrInvalidConfig(msg string) error {
-	return fmt.Errorf("xds: invalid config: %s", msg)
-}
-
 // ErrSubscriptionFailed creates a subscription error
-func ErrSubscriptionFailed(resourceType, name string, err error) error {
-	return fmt.Errorf("xds: failed to subscribe to %s resource '%s': %w", resourceType, name, err)
+func ErrSubscriptionFailed(resourceType, resourceName string, err error) error {
+	return fmt.Errorf("failed to subscribe to %s/%s: %w", resourceType, resourceName, err)
 }
 
 // ErrUpdateFailed creates an update error

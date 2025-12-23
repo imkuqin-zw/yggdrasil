@@ -26,10 +26,49 @@ type XDSConfig struct {
 
 // Cluster represents a cluster configuration
 type Cluster struct {
-	Name           string `yaml:"name"`
-	ConnectTimeout string `yaml:"connectTimeout"`
-	Type           string `yaml:"type"` // STATIC, STRICT_DNS, LOGICAL_DNS, EDS
-	LbPolicy       string `yaml:"lbPolicy"`
+	Name             string                  `yaml:"name"`
+	ConnectTimeout   string                  `yaml:"connectTimeout"`
+	Type             string                  `yaml:"type"` // STATIC, STRICT_DNS, LOGICAL_DNS, EDS
+	LbPolicy         string                  `yaml:"lbPolicy"`
+	CircuitBreakers  *CircuitBreakersConfig  `yaml:"circuitBreakers,omitempty"`
+	OutlierDetection *OutlierDetectionConfig `yaml:"outlierDetection,omitempty"`
+	RateLimiting     *RateLimitingConfig     `yaml:"rateLimiting,omitempty"`
+}
+
+// CircuitBreakersConfig represents circuit breaker thresholds
+type CircuitBreakersConfig struct {
+	MaxConnections     uint32 `yaml:"maxConnections,omitempty"`
+	MaxPendingRequests uint32 `yaml:"maxPendingRequests,omitempty"`
+	MaxRequests        uint32 `yaml:"maxRequests,omitempty"`
+	MaxRetries         uint32 `yaml:"maxRetries,omitempty"`
+}
+
+// OutlierDetectionConfig represents outlier detection configuration
+type OutlierDetectionConfig struct {
+	Consecutive5xx                 uint32 `yaml:"consecutive5xx,omitempty"`
+	ConsecutiveGatewayFailure      uint32 `yaml:"consecutiveGatewayFailure,omitempty"`
+	ConsecutiveLocalOriginFailure  uint32 `yaml:"consecutiveLocalOriginFailure,omitempty"`
+	Interval                       string `yaml:"interval,omitempty"`
+	BaseEjectionTime               string `yaml:"baseEjectionTime,omitempty"`
+	MaxEjectionTime                string `yaml:"maxEjectionTime,omitempty"`
+	MaxEjectionPercent             uint32 `yaml:"maxEjectionPercent,omitempty"`
+	EnforcingConsecutive5xx        uint32 `yaml:"enforcingConsecutive5xx,omitempty"`
+	EnforcingSuccessRate           uint32 `yaml:"enforcingSuccessRate,omitempty"`
+	SuccessRateMinimumHosts        uint32 `yaml:"successRateMinimumHosts,omitempty"`
+	SuccessRateRequestVolume       uint32 `yaml:"successRateRequestVolume,omitempty"`
+	SuccessRateStdevFactor         uint32 `yaml:"successRateStdevFactor,omitempty"`
+	FailurePercentageThreshold     uint32 `yaml:"failurePercentageThreshold,omitempty"`
+	EnforcingFailurePercentage     uint32 `yaml:"enforcingFailurePercentage,omitempty"`
+	FailurePercentageMinimumHosts  uint32 `yaml:"failurePercentageMinimumHosts,omitempty"`
+	FailurePercentageRequestVolume uint32 `yaml:"failurePercentageRequestVolume,omitempty"`
+	SplitExternalLocalOriginErrors bool   `yaml:"splitExternalLocalOriginErrors,omitempty"`
+}
+
+// RateLimitingConfig represents rate limiting configuration
+type RateLimitingConfig struct {
+	MaxTokens     uint32 `yaml:"maxTokens,omitempty"`
+	TokensPerFill uint32 `yaml:"tokensPerFill,omitempty"`
+	FillInterval  string `yaml:"fillInterval,omitempty"`
 }
 
 // Endpoint represents endpoint configuration for a cluster

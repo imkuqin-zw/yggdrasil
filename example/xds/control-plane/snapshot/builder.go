@@ -30,6 +30,8 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // Builder builds xDS snapshots from configuration
@@ -88,6 +90,67 @@ func (b *Builder) buildClusters(configs []Cluster) []types.Resource {
 				},
 			},
 		}
+
+		// Add circuit breakers if configured
+		if cfg.CircuitBreakers != nil {
+			c.CircuitBreakers = &cluster.CircuitBreakers{
+				Thresholds: []*cluster.CircuitBreakers_Thresholds{
+					{
+						MaxConnections:     &wrapperspb.UInt32Value{Value: cfg.CircuitBreakers.MaxConnections},
+						MaxPendingRequests: &wrapperspb.UInt32Value{Value: cfg.CircuitBreakers.MaxPendingRequests},
+						MaxRequests:        &wrapperspb.UInt32Value{Value: cfg.CircuitBreakers.MaxRequests},
+						MaxRetries:         &wrapperspb.UInt32Value{Value: cfg.CircuitBreakers.MaxRetries},
+					},
+				},
+			}
+		}
+
+		// Add outlier detection if configured
+		if cfg.OutlierDetection != nil {
+			od := cfg.OutlierDetection
+			c.OutlierDetection = &cluster.OutlierDetection{
+				Consecutive_5Xx:                &wrapperspb.UInt32Value{Value: od.Consecutive5xx},
+				ConsecutiveGatewayFailure:      &wrapperspb.UInt32Value{Value: od.ConsecutiveGatewayFailure},
+				ConsecutiveLocalOriginFailure:  &wrapperspb.UInt32Value{Value: od.ConsecutiveLocalOriginFailure},
+				Interval:                       durationpb.New(ParseDuration(od.Interval, 10*time.Second)),
+				BaseEjectionTime:               durationpb.New(ParseDuration(od.BaseEjectionTime, 30*time.Second)),
+				MaxEjectionTime:                durationpb.New(ParseDuration(od.MaxEjectionTime, 300*time.Second)),
+				MaxEjectionPercent:             &wrapperspb.UInt32Value{Value: od.MaxEjectionPercent},
+				EnforcingConsecutive_5Xx:       &wrapperspb.UInt32Value{Value: od.EnforcingConsecutive5xx},
+				EnforcingSuccessRate:           &wrapperspb.UInt32Value{Value: od.EnforcingSuccessRate},
+				SuccessRateMinimumHosts:        &wrapperspb.UInt32Value{Value: od.SuccessRateMinimumHosts},
+				SuccessRateRequestVolume:       &wrapperspb.UInt32Value{Value: od.SuccessRateRequestVolume},
+				SuccessRateStdevFactor:         &wrapperspb.UInt32Value{Value: od.SuccessRateStdevFactor},
+				FailurePercentageThreshold:     &wrapperspb.UInt32Value{Value: od.FailurePercentageThreshold},
+				EnforcingFailurePercentage:     &wrapperspb.UInt32Value{Value: od.EnforcingFailurePercentage},
+				FailurePercentageMinimumHosts:  &wrapperspb.UInt32Value{Value: od.FailurePercentageMinimumHosts},
+				FailurePercentageRequestVolume: &wrapperspb.UInt32Value{Value: od.FailurePercentageRequestVolume},
+				SplitExternalLocalOriginErrors: od.SplitExternalLocalOriginErrors,
+			}
+		}
+
+		// Add rate limiting via metadata if configured
+		if cfg.RateLimiting != nil {
+			rl := cfg.RateLimiting
+			c.Metadata = &core.Metadata{
+				FilterMetadata: map[string]*structpb.Struct{
+					"yggdrasil.rate_limit": {
+						Fields: map[string]*structpb.Value{
+							"max_tokens": {
+								Kind: &structpb.Value_NumberValue{NumberValue: float64(rl.MaxTokens)},
+							},
+							"tokens_per_fill": {
+								Kind: &structpb.Value_NumberValue{NumberValue: float64(rl.TokensPerFill)},
+							},
+							"fill_interval": {
+								Kind: &structpb.Value_NumberValue{NumberValue: ParseDuration(rl.FillInterval, time.Second).Seconds()},
+							},
+						},
+					},
+				},
+			}
+		}
+
 		clusters = append(clusters, c)
 	}
 

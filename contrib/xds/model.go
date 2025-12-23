@@ -47,10 +47,13 @@ var _ resolver2.Endpoint = (*Endpoint)(nil)
 
 // ClusterInfo contains information about an xDS cluster
 type ClusterInfo struct {
-	Name      string
-	Endpoints []*Endpoint
-	LbPolicy  string
-	Metadata  map[string]interface{}
+	Name             string
+	Endpoints        []*Endpoint
+	LbPolicy         string
+	Metadata         map[string]interface{}
+	CircuitBreaker   *CircuitBreakerConfig
+	OutlierDetection *OutlierDetectionConfig
+	RateLimiter      *RateLimitConfig
 }
 
 // LocalityEndpoints represents endpoints grouped by locality
